@@ -209,21 +209,15 @@ const skillFiles = (skill) => markdownFiles().filter((file) => file.startsWith(`
 /** The files people and agents read: Markdown and JSON. */
 const copyFiles = () => repoFiles().filter((file) => /\.(md|json)$/.test(file));
 
-const FENCE = /^([ \t]*)(```|~~~)([^\n]*)\n([\s\S]*?)^\1\2[ \t]*$/gm;
-const INLINE_CODE = /(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
+const FENCE = /^(?<indent>[ \t]*)(?<fence>```|~~~)[^\n]*\n(?<body>[\s\S]*?)^\k<indent>\k<fence>[ \t]*$/gm;
+const INLINE_CODE = /(?<ticks>`+)(?!`)(?<body>[\s\S]*?[^`])\k<ticks>(?!`)/g;
 
 /** Markdown split into its fenced code blocks, its inline code spans, and the prose around them. */
 function parseMarkdown(markdown) {
-  const blocks = [];
-  const outside = markdown.replace(FENCE, (_, indent, fence, info, body) => {
-    blocks.push(body);
-    return '\n';
-  });
-  const inline = [];
-  const prose = outside.replace(INLINE_CODE, (_, ticks, body) => {
-    inline.push(body.trim());
-    return ' ';
-  });
+  const blocks = [...markdown.matchAll(FENCE)].map((match) => match.groups.body);
+  const outside = markdown.replace(FENCE, '\n');
+  const inline = [...outside.matchAll(INLINE_CODE)].map((match) => match.groups.body.trim());
+  const prose = outside.replace(INLINE_CODE, ' ');
   return { blocks, inline, prose };
 }
 
