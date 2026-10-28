@@ -1,6 +1,6 @@
 # The REST API
 
-The base URL is `https://api.chesly.app/v1`. The OpenAPI 3.1 document, generated from the code that runs the API, is at https://api.chesly.app/v1/openapi.json.
+The base URL is `https://api.chesly.app/v1`. The OpenAPI 3.1 document, generated from the code that runs the API, is at https://api.chesly.app/v1/openapi.json (Wave 2).
 
 Rows and sections marked (Wave 2) arrive with the API's second wave.
 
@@ -35,13 +35,13 @@ curl https://api.chesly.app/v1/me -H "Authorization: Bearer $CHESLY_API_KEY"
 
 | Endpoint | What it does |
 |---|---|
-| `GET /v1/me` | The key, the plan, usage this period and the limits, with each account's send limits. |
+| `GET /v1/me` | The key, usage this period and the limits, and from Wave 2 the plan and each account's send limits. (Wave 2) |
 | `GET /v1/accounts` | The connected accounts: `id`, `network`, `display_name`, `status` (`connected`, `disconnected` or `needs_attention`) and `connected_at`. |
 | `GET /v1/chats` | Chats, pinned first, then the newest: `account_id`, `unread`, `archived` (`true`, `false` or `all`), `q` (a name), `sort` (`recent` or `unread`), `limit`, `cursor`. |
 | `GET /v1/chats/{chat_id}` | One chat. |
 | `GET /v1/chats/{chat_id}/messages` | A chat's messages, newest first: `limit`, `cursor`. |
 | `POST /v1/chats/{chat_id}/read` | Marks a chat read, as the apps do, and answers `{ read: true, receipt_sent }`. A message request is marked read with no receipt. |
-| `GET /v1/messages/{message_id}` | One message, with its `delivery` when it was sent through the API. |
+| `GET /v1/messages/{message_id}` | One message, with its `delivery` when it was sent through the API. (Wave 2) |
 | `GET /v1/messages/search` | Messages that match `q` (at most 200 characters), newest first: `chat_id`, `account_id`, `limit` (1 to 100, default 20). Each hit is a message plus `chat_name` and `network`. |
 | `GET /v1/messages` | Everything new across the chats since `since`, a page at a time: `limit` (1 to 200, default 100), `cursor`. It answers `messages`, `next_cursor` and `until`; the next walk starts at `since=<until>`. |
 | `GET /v1/catch_up` | The unread chats that aren't muted or archived, each with its newest messages, in one call: `chats` (1 to 50, default 20), `per_chat` (1 to 20, default 5). |
@@ -169,6 +169,8 @@ The answer, `201`, is `{ "id": "media_…", "mime_type": "application/pdf", "siz
 | Limit | Value |
 |---|---|
 | Requests per key | 10 a second and 600 a minute |
+| Requests per user, all keys together | 10 a second and 600 a minute (Wave 2) |
+| Since-feed pages (`GET /v1/messages?since=`) | 30 a minute, per user (Wave 2) |
 | Searches, catch-ups | 30 a minute each, per user |
 | Sends on WhatsApp | 60 an hour and 250 a day, per account |
 | Sends on every other network, email included | 30 an hour and 150 a day, per account |
@@ -177,7 +179,7 @@ The answer, `201`, is `{ "id": "media_…", "mime_type": "application/pdf", "siz
 | Webhooks | 10 |
 | Keys | 25 |
 
-Past a limit: `429` with `Retry-After`. Every answer carries `RateLimit` and `RateLimit-Policy` headers, and `GET /v1/me` shows each account's sends so far (`limits.sends`: `per_hour`, `per_day`, `used_last_hour`, `used_last_day`).
+Past a limit: `429` with `Retry-After`. More keys separate agents, but never add requests: a user's keys share one limit. Every answer carries `RateLimit` and `RateLimit-Policy` headers, and `GET /v1/me` shows each account's sends so far (`limits.sends`: `per_hour`, `per_day`, `used_last_hour`, `used_last_day`).
 
 ## Calls and billing
 

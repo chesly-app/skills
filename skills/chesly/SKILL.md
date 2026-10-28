@@ -14,9 +14,9 @@ Chesly gives you the user's own messages on WhatsApp, iMessage, Instagram, Messe
    1. Run `chesly login --no-wait --json`. It prints the link and the code, opens the user's browser on the link where it can, and exits.
    2. Show the user the link and the code, and ask them to approve the code on that page.
    3. Once they have, run `chesly login --wait --json`. It waits for the approval, then stores the key. If your tool stops it before then, run it again. If the code expired (`expired_token`), start over at step 1.
-3. If `chesly accounts --json` lists no accounts, the user connects them in the Chesly app on their phone or Mac. The CLI can't.
+3. If `chesly accounts --json` lists no accounts, the user connects them in the Chesly app. The CLI can't.
 
-On a server or in CI, the user can set `CHESLY_API_KEY` to a key from https://web.chesly.app/api/keys instead of signing in. Never put a key on a command line, where the process list and shell history keep it, and don't ask the user to paste one into the chat.
+On a server or in CI, the user can set `CHESLY_API_KEY` to a key from https://web.chesly.app/api/keys instead of signing in. Never type or paste a key itself, on a command line or into the chat: the process list, the shell history and the transcript keep it.
 
 ## The loop
 

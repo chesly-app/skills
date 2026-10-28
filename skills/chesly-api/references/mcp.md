@@ -17,13 +17,13 @@ The URL is `https://api.chesly.app/mcp`, over Streamable HTTP. It takes the user
 | `catch_up` | any | `chats` (1 to 50, default 20), `per_chat` (1 to 20, default 5), and `network` (Wave 2) | The unread chats that aren't muted or archived, newest first, each with its newest messages. |
 | `read_chat` | any | `chat_id`, `limit` (1 to 50, default 20), `cursor` | A chat's messages, newest first. |
 | `search_messages` | any | `query` (at most 200 characters), `chat_id`, `limit` (1 to 20, default 10), and `network` (Wave 2) | Messages that match, in every chat or one, each naming its chat and network. |
-| `get_message` | any | `message_id` | One message, with its delivery status. |
+| `get_message` | any | `message_id` | One message, with its delivery status (Wave 2). |
 | `mark_read` | full | `chat_id` | Marks a chat read, as the apps do; the network gets a read receipt unless the user keeps receipts private. |
 | `send_message` | full | `chat_id`, `text`, `reply_to`, `media_id`, `idempotency_key` | Sends a message, as the user, to one of their chats. (Wave 2) |
 | `find_contact` | any | `query` (1 to 100 characters), `limit` (at most 20, default 10) | Finds the people of the user's direct chats by name, on every network, each with their direct chat. (Wave 2) |
 | `transcribe_voice_note` | full | `message_id` | Turns a voice note into text, at $0.02 a minute of audio. (Wave 2) |
 
-- A read-only key sees 7 tools: not `send_message`, `mark_read` or `transcribe_voice_note`.
+- A read-only key sees 7 tools (Wave 2): not `send_message`, `mark_read` or `transcribe_voice_note`.
 - `network` is one network's name, such as `whatsapp`. Email stays out of `list_chats`, `catch_up` and `search_messages` unless `network` is `email`; an email chat or message is always reachable by its ID.
 - `send_message` follows the REST API's rules: only chats the user has, no message requests, the send limits, and at most once per `idempotency_key`. Pass one, and reuse it if you call again after an unclear failure.
 - A file for `send_message` comes from `POST /v1/media`; the MCP server has no upload tool.
@@ -38,7 +38,7 @@ The URL is `https://api.chesly.app/mcp`, over Streamable HTTP. It takes the user
 
 ## Setup
 
-The key: `chesly key --reveal` prints the one the CLI signed in with, or the user makes one at https://web.chesly.app/api/keys. Keep it in `CHESLY_API_KEY` rather than in a config file you might commit.
+The key: `$(chesly key --reveal)` hands over the one the CLI signed in with, as in the Claude Code line below, or the user makes one at https://web.chesly.app/api/keys. Keep it in `CHESLY_API_KEY` rather than in a config file you might commit. When the CLI's key is revoked (`chesly logout`, `chesly login --force`), a server set up with it stops working: set it up again with the new key.
 
 ### Claude Code
 

@@ -25,9 +25,9 @@ curl https://api.chesly.app/v1/catch_up -H "Authorization: Bearer $CHESLY_API_KE
 ## Keys
 
 - Every request carries `Authorization: Bearer ck_live_…`. A key is `ck_live_` and 48 characters, shown once.
-- The user makes keys at https://web.chesly.app/api/keys, or signs in with `chesly login`, after which `chesly key --reveal` prints the CLI's key.
-- A full-access key reads and sends. A read-only key may only `GET`, and the MCP server shows it 7 of its 10 tools.
-- Keep a key in an environment variable (`CHESLY_API_KEY`) or a secret store: never in code, a repository, a command line or the chat. A revoked key stops working on its next request.
+- The user makes keys at https://web.chesly.app/api/keys, or signs in with `chesly login`, after which `$(chesly key --reveal)` hands the CLI's key to a command, such as an MCP client's setup. Use `--reveal` only inside `$(…)`: on its own, it prints the key into the transcript.
+- A full-access key reads and sends. A read-only key may only `GET`, and the MCP server shows it 7 of its 10 tools (Wave 2).
+- Keep a key in an environment variable (`CHESLY_API_KEY`) or a secret store, out of code and repositories, and never type or paste a key itself, on a command line or into the chat. A revoked key stops working on its next request: `chesly logout` and `chesly login --force` revoke the CLI's key, so set up again any client that used it.
 - The API needs a plan. A `402` (`api_plan_required`, `trial_limit_reached`, `spend_limit_reached`) means the user starts the plan, or raises its spend limit, at https://web.chesly.app/api/billing. `GET /v1/me` always answers, with the plan, usage and limits.
 
 ## What it does, and doesn't

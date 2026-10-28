@@ -130,6 +130,8 @@ const TOOLS = {
 };
 /** The tools that take a `network` input (Wave 2). */
 const NETWORK_INPUT_TOOLS = ['list_chats', 'catch_up', 'search_messages'];
+/** Older endpoints and tools whose answers Wave 2 extends: `GET /v1/me`'s plan and send limits, a message's `delivery`. */
+const WAVE_2_CONTENT = ['GET /v1/me', 'GET /v1/messages/{message_id}', 'get_message'];
 /** The verbs a tool name starts with: a name shaped like one that isn't a tool is a wrong tool name. */
 const TOOL_SHAPE = /^(list|get|send|search|read|mark|find|transcribe|catch|create|update|delete|upload|fetch|watch|reply|add|remove)_[a-z_]+$/;
 
@@ -249,12 +251,25 @@ function frontmatter(markdown) {
     if (value.startsWith('"')) {
       fields[key] = JSON.parse(value);
     } else {
-      // YAML reads ": " or " #" in a plain value as structure or a comment, so such a value is quoted.
-      assert.doesNotMatch(value, /: | #|^['>|&*!%@`{[]/, `${key} needs quotes`);
+      assert.equal(plainValueProblem(value), null, `${key} needs quotes`);
       fields[key] = value;
     }
   }
   return fields;
+}
+
+/**
+ * Why YAML would read a plain (unquoted) value as something other than that text, or null: ": " or
+ * " #" inside it, a start that opens a structure, comment, alias, tag or block (`#`, `- `, `? `,
+ * `]`, a quote, `{`, `[`…), a trailing `:`, or a whole value YAML reads as a boolean, null or number.
+ */
+function plainValueProblem(value) {
+  if (/: | #/.test(value)) return '": " or " #" inside';
+  if (/^(?:[#'"{}[\]>|&*!%@`,]|[-?:](?:\s|$))/.test(value)) return 'its first character';
+  if (/:$/.test(value)) return 'a trailing ":"';
+  if (/^(?:y|yes|n|no|true|false|on|off|null|~)$/i.test(value)) return 'a boolean or null';
+  if (/^[-+]?(?:\d[\d_.]*(?:e[-+]?\d+)?|\.\d+|\.inf|\.nan|0x[\da-f]+|0o[0-7]+)$/i.test(value)) return 'a number';
+  return null;
 }
 
 /** The text under a heading, up to the next heading of the same level or higher. */
@@ -626,6 +641,16 @@ test('the_send_check_reads_heredocs_files_and_pipes', () => {
   }
 });
 
+test('the_frontmatter_check_quotes_what_yaml_would_misread', () => {
+  for (const value of ['chesly', 'chesly-api', 'Reads the user\'s chats, using the chesly CLI.', '3 ways in', 'Use it when: never']) {
+    assert.equal(plainValueProblem(value), value === 'Use it when: never' ? '": " or " #" inside' : null, value);
+  }
+  for (const value of ['# not a comment', '- a list', '? a key', '] closes', 'ends with:', 'yes', 'Null', '~', 'off',
+    '1.0', '-3', 'Build: REST', 'it # comment', "'quoted", '*alias', '!tag', '{a}', '[a]']) {
+    assert.notEqual(plainValueProblem(value), null, value);
+  }
+});
+
 test('the_section_and_slug_readers_follow_github', () => {
   const markdown = '# Title\n\n## Exit codes\ntext\n### Deeper\nmore\n## Next\n\n## `chesly send`\n## Exit codes\n';
   assert.equal(section(markdown, 'Exit codes'), '## Exit codes\ntext\n### Deeper\nmore');
@@ -769,6 +794,31 @@ test('the_chesly_skill_guides_a_user_without_the_plugin', () => {
   assert.ok(code.some((piece) => /^chesly login\b/.test(piece)), 'the setup signs in with chesly login');
   assert.ok(code.some((piece) => /^chesly whoami --json$/.test(piece)), 'the setup checks the sign-in first');
   assert.doesNotMatch(setup, /\bMCP\b/, 'the setup never needs the MCP server');
+  assert.match(setup, /connects them in the Chesly app\./, 'accounts are connected in the Chesly app, wherever it runs');
+  assert.match(setup, /[Nn]ever type or paste a key itself/, 'a key never passes through a command line or the chat');
+});
+
+test('the_key_is_revealed_only_inside_a_command_substitution', () => {
+  // `chesly key --reveal` on its own prints the key into the agent's transcript; `$(…)` hands it straight on.
+  for (const skill of Object.keys(SKILLS)) {
+    for (const file of skillFiles(skill)) {
+      for (const code of codeOf(read(file))) {
+        for (const { words, via } of cheslyCommands(code)) {
+          if (words[0] === 'key' && words.includes('--reveal')) assert.equal(via, '$(', `${file}: chesly ${words.join(' ')}`);
+        }
+      }
+    }
+  }
+});
+
+test('the_command_reference_warns_that_a_revoked_key_breaks_its_setups', () => {
+  const rows = read(join('skills', 'chesly', 'references', 'commands.md')).split('\n');
+  for (const command of ['chesly login --force', 'chesly logout']) {
+    const row = rows.find((line) => line.startsWith(`| \`${command}\` |`));
+    assert.ok(row !== undefined, command);
+    assert.match(row, /revokes/i, `${command} says it revokes the old key`);
+    assert.match(row, /plugin/, `${command} says a plugin set up with that key stops working`);
+  }
 });
 
 test('every_skill_shows_the_text_and_waits_for_ok_before_sending', () => {
@@ -873,10 +923,27 @@ test('the_rest_reference_covers_every_endpoint_and_marks_wave_2', () => {
   assert.deepEqual([...ENDPOINT_WAVES.keys()].filter((endpoint) => !named.has(endpoint)), []);
   const rows = rest.split('\n').filter((line) => /^\| `(GET|POST|PATCH|DELETE) /.test(line));
   assert.ok(rows.length > 0, 'the endpoints are in a table');
+  const extended = new Set(WAVE_2_CONTENT.filter((name) => name.includes(' ')).map((name) => endpointKey(...name.split(' '))));
   for (const row of rows) {
     const endpoints = [...row.split('|')[1].matchAll(METHOD_PATH)].map(([, method, path]) => endpointKey(method, path));
-    const wave2 = endpoints.some((endpoint) => ENDPOINT_WAVES.get(endpoint) === 2);
+    const wave2 = endpoints.some((endpoint) => ENDPOINT_WAVES.get(endpoint) === 2 || extended.has(endpoint));
     assert.equal(row.includes('(Wave 2)'), wave2, `${row}\nshould ${wave2 ? '' : 'not '}be marked (Wave 2)`);
+  }
+});
+
+test('the_rest_reference_gives_the_per_user_limits', () => {
+  const limits = section(apiReference('rest.md'), 'Limits');
+  assert.match(limits, /^\| Requests per user, all keys together \| 10 a second and 600 a minute \(Wave 2\) \|$/m);
+  assert.match(limits, /^\| Since-feed pages \(`GET \/v1\/messages\?since=`\) \| 30 a minute, per user \(Wave 2\) \|$/m);
+});
+
+test('wave_2_facts_in_prose_are_marked', () => {
+  // A line that states one of these Wave 2 facts outside the marked tables carries the mark too.
+  const facts = [/\b7 (?:of its 10 )?tools\b/, /OpenAPI 3\.1 document/];
+  for (const file of skillFiles('chesly-api')) {
+    for (const line of read(file).split('\n')) {
+      if (facts.some((fact) => fact.test(line))) assert.ok(line.includes('(Wave 2)'), `${file}: ${line}`);
+    }
   }
 });
 
@@ -900,7 +967,7 @@ test('the_mcp_reference_covers_the_ten_tools_and_marks_wave_2', () => {
   assert.deepEqual(rows.map(tool).sort(), Object.keys(TOOLS).sort());
   for (const row of rows) {
     const { wave, readKey } = TOOLS[tool(row)];
-    const wave2 = wave === 2 || (NETWORK_INPUT_TOOLS.includes(tool(row)) && row.includes('`network`'));
+    const wave2 = wave === 2 || WAVE_2_CONTENT.includes(tool(row)) || (NETWORK_INPUT_TOOLS.includes(tool(row)) && row.includes('`network`'));
     assert.equal(row.includes('(Wave 2)'), wave2, `${row}\nshould ${wave2 ? '' : 'not '}be marked (Wave 2)`);
     assert.equal(row.split('|')[2].trim(), readKey ? 'any' : 'full', `${row}\nthe key it needs`);
   }
@@ -929,6 +996,7 @@ test('the_events_reference_covers_the_catalog_and_the_webhook_wire', () => {
     assert.ok(code.includes(words), `the events reference covers ${words}`);
   }
   assert.match(events, /5 seconds, then 5 minutes, 30 minutes, 2 hours, 5 hours, 10 hours and 10 hours/, 'the retry schedule');
+  assert.match(section(events, 'Events and webhooks \\(Wave 2\\)'), /webhook needs a full-access key/, 'webhook writes need a full key');
 });
 
 // ---------------------------------------------------------------------------------------------

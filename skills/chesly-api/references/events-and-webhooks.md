@@ -8,7 +8,7 @@ Every change to the user's chats lands in one log, kept 4 days and ordered per u
 | [The live stream](#the-live-stream), `GET /v1/events/stream`: server-sent events | A long-running process |
 | [The feed](#the-feed), `GET /v1/events?after=`: a page of events at a time | A cron job, or catching up after downtime |
 
-None of them count as calls, and any key, read-only included, can use them. Delivery is at least once: the same event can arrive twice, so skip an `id` you have handled.
+None of them count as calls, and any key, read-only included, can read them. Creating, changing, rotating, testing or deleting a webhook needs a full-access key. Delivery is at least once: the same event can arrive twice, so skip an `id` you have handled.
 
 ## Contents
 

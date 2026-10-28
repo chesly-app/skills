@@ -26,13 +26,13 @@ Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2.
 | `chesly login --wait` | Finishes that sign-in: waits until the user approves the code, stores the key, and prints `{"status":"signed_in",…}`. Cut short (Ctrl+C, a tool's time limit), it can run again; with no sign-in waiting, it fails with `login_not_started`. (Wave 2) |
 | `chesly login` | Both steps in one, for a person at a terminal: prints the link and the code, opens the browser where it can, and waits for the approval. |
 | `chesly login --no-browser` | Signs in without opening a browser, to approve on another device. (Wave 2) |
-| `chesly login --force` | Signs in with a new key even though the stored one still works. Without it, `chesly login` says "Already signed in" (`already_signed_in`) and makes no new key. (Wave 2) |
+| `chesly login --force` | Signs in with a new key even though the stored one still works, and revokes the key it replaces (so does a `--wait` that stores a new key). A plugin or MCP client set up with the old key stops working; if the old key can't be revoked, a `key_still_active` warning names it. Without `--force`, `chesly login` says "Already signed in" (`already_signed_in`) and makes no new key. (Wave 2) |
 | `chesly login --key -` | Reads a key the user already has from standard input, checks it, then stores it. (Wave 2) |
-| `chesly logout` | Revokes the stored key, so it stops working everywhere, then removes it from this computer. Offline, or with a read-only key, it still signs out, and says the key is still active. (Wave 2) |
+| `chesly logout` | Revokes the stored key, so it stops working everywhere, a plugin or MCP client set up with it included, then removes it from this computer. Offline, or with a read-only key, it still signs out, and a `key_still_active` warning names the key to revoke. (Wave 2) |
 | `chesly whoami` | The key in use: its name, scope (`full` or `read`), API version, limits and usage. |
-| `chesly key [--reveal]` | The key in use, masked. `--reveal` prints the whole key and nothing else, for MCP clients. |
+| `chesly key` | The key in use, masked. `$(chesly key --reveal)` hands the whole key to another command, such as an MCP client's header. Use `--reveal` only inside `$(…)`: on its own, it prints the key into your transcript. |
 
-Never put a key itself on a command line: the process list and shell history keep it. On a server or in CI, the user sets `CHESLY_API_KEY` instead (it wins over the stored key), or pipes the key to `chesly login --key -`.
+Never type or paste a key itself: on a command line, the process list and the shell history keep it. On a server or in CI, the user sets `CHESLY_API_KEY` instead (it wins over the stored key), or pipes the key to `chesly login --key -`.
 
 The key goes to the OS keychain, or to `~/.config/chesly/credentials.json` (mode 0600) where there is no keychain. A pending sign-in waits in `~/.config/chesly/pending-login.json` until `--wait` finishes it or the code expires, 10 minutes later; `--wait` then fails with `expired_token`, and a new `--no-wait` starts over. A denied sign-in fails with `access_denied`. Each sign-in makes a new key, and an account can have 25.
 
