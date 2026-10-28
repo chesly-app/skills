@@ -791,3 +791,59 @@ test('the_events_reference_covers_the_catalog_and_the_webhook_wire', () => {
   }
   assert.match(events, /5 seconds, then 5 minutes, 30 minutes, 2 hours, 5 hours, 10 hours and 10 hours/, 'the retry schedule');
 });
+
+// ---------------------------------------------------------------------------------------------
+// The Claude Code plugin and marketplace
+// ---------------------------------------------------------------------------------------------
+
+const readJson = (file) => JSON.parse(read(file));
+
+test('the_plugin_manifest_has_the_planned_values', () => {
+  assert.deepEqual(readJson(join('.claude-plugin', 'plugin.json')), {
+    name: 'chesly',
+    displayName: 'Chesly',
+    version: '0.1.0',
+    description: 'Your chats, as an API: read, search, watch and answer your messages across the networks you connected in Chesly.',
+    author: { name: 'Chesly', url: 'https://agents.chesly.app' },
+    homepage: 'https://agents.chesly.app',
+    repository: 'https://github.com/chesly-app/skills',
+    keywords: ['messages', 'chats', 'inbox', 'mcp', 'cli'],
+    userConfig: {
+      api_key: {
+        type: 'string',
+        title: 'Chesly API key',
+        description: 'Run chesly key --reveal, or make a key at https://web.chesly.app/api/keys.',
+        sensitive: true,
+        required: true,
+      },
+    },
+  });
+});
+
+test('the_marketplace_lists_the_repo_root_as_its_one_plugin', () => {
+  assert.deepEqual(readJson(join('.claude-plugin', 'marketplace.json')), {
+    name: 'chesly',
+    owner: { name: 'Chesly', url: 'https://agents.chesly.app' },
+    description: 'Chesly for Claude Code.',
+    plugins: [{ name: 'chesly', source: './', description: 'Skills and the MCP server for your Chesly chats.' }],
+  });
+});
+
+test('the_mcp_server_sends_the_key_kept_as_a_secret', () => {
+  const { mcpServers } = readJson('.mcp.json');
+  assert.deepEqual(mcpServers, {
+    chesly: { type: 'http', url: MCP_URL, headers: { Authorization: 'Bearer ${user_config.api_key}' } },
+  });
+  // Claude Code keeps a sensitive option in the OS keychain, never in settings.json.
+  const { userConfig } = readJson(join('.claude-plugin', 'plugin.json'));
+  for (const [, option] of JSON.stringify(mcpServers).matchAll(/\$\{user_config\.(\w+)\}/g)) {
+    assert.equal(userConfig[option]?.sensitive, true, `${option} is a declared, sensitive option`);
+  }
+});
+
+test('the_readme_gives_the_install_lines', () => {
+  const lines = codeOf(read('README.md')).flatMap((piece) => piece.split('\n'));
+  for (const line of ['npx skills add chesly-app/skills', '/plugin marketplace add chesly-app/skills', '/plugin install chesly@chesly']) {
+    assert.ok(lines.includes(line), `the README shows ${line}`);
+  }
+});

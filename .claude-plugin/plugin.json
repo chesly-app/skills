@@ -1,0 +1,22 @@
+{
+  "name": "chesly",
+  "displayName": "Chesly",
+  "version": "0.1.0",
+  "description": "Your chats, as an API: read, search, watch and answer your messages across the networks you connected in Chesly.",
+  "author": {
+    "name": "Chesly",
+    "url": "https://agents.chesly.app"
+  },
+  "homepage": "https://agents.chesly.app",
+  "repository": "https://github.com/chesly-app/skills",
+  "keywords": ["messages", "chats", "inbox", "mcp", "cli"],
+  "userConfig": {
+    "api_key": {
+      "type": "string",
+      "title": "Chesly API key",
+      "description": "Run chesly key --reveal, or make a key at https://web.chesly.app/api/keys.",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}

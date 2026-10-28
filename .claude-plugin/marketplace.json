@@ -1,0 +1,15 @@
+{
+  "name": "chesly",
+  "owner": {
+    "name": "Chesly",
+    "url": "https://agents.chesly.app"
+  },
+  "description": "Chesly for Claude Code.",
+  "plugins": [
+    {
+      "name": "chesly",
+      "source": "./",
+      "description": "Skills and the MCP server for your Chesly chats."
+    }
+  ]
+}
