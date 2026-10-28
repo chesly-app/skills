@@ -19,10 +19,11 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /**
  * The chesly CLI's commands and options. Each carries the wave that brings it: 1 is the alpha,
  * 2 is the API's Wave 2 (CLI 0.2). A command's own wave also covers a change in what it does:
- * `logout` revokes its key from Wave 2 on. Every command also takes GLOBAL_OPTIONS.
+ * `logout` revokes its key from Wave 2 on, and `--key` reads the key from stdin (`--key -`), the
+ * only form a skill shows. Every command also takes GLOBAL_OPTIONS.
  */
 const CLI = {
-  login: { wave: 1, options: { '--key': 1, '--no-wait': 2, '--wait': 2 } },
+  login: { wave: 1, options: { '--key': 2, '--no-browser': 2, '--no-wait': 2, '--wait': 2, '--force': 2 } },
   logout: { wave: 2, options: {} },
   whoami: { wave: 1, options: {} },
   key: { wave: 1, options: { '--reveal': 1 } },
@@ -51,15 +52,15 @@ const GLOBAL_OPTIONS = ['--json', '--help'];
 /** What `chesly` takes before a command. */
 const TOP_LEVEL_OPTIONS = ['--version', '--help', '--json'];
 
-/** The CLI's exit codes, each with words its description must use. */
+/** The CLI's exit codes, word for word as the CLI's README has them. */
 const EXIT_CODES = [
-  [0, /\bok\b/i],
-  [1, /\berror\b/i],
-  [2, /\busage\b/i],
-  [3, /not signed in/i],
-  [4, /not found/i],
-  [5, /retry later/i],
-  [6, /payment required/i],
+  '| 0 | ok |',
+  '| 1 | error |',
+  '| 2 | usage |',
+  '| 3 | not signed in (no key, a malformed one, or the key was rejected) |',
+  '| 4 | not found (an unknown chat, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |',
+  '| 5 | temporary, retry later: rate limited (a 429: too many requests, a send cap, or too many open event streams) or briefly unavailable (a 503). `retry_after` says when, if the answer has it |',
+  '| 6 | payment required: the account needs an API plan, or a limit of its plan is reached |',
 ];
 
 /** The networks, as people name them and as the API does (`network`, `--network`). */
@@ -341,6 +342,21 @@ test('every_chesly_command_and_option_exists', () => {
   assert.deepEqual(problems, []);
 });
 
+test('no_command_puts_a_key_on_the_command_line', () => {
+  // The process list and shell history keep argv: a key comes from CHESLY_API_KEY or stdin (`--key -`).
+  for (const file of markdownFiles()) {
+    for (const code of codeOf(read(file))) {
+      assert.doesNotMatch(code, /ck_live_[A-Za-z0-9_-]{4,}/, `${file}: a key in the text`);
+      for (const words of cheslyCommands(code)) {
+        if (words[0] !== 'login') continue;
+        assert.ok(!words.some((word) => word.startsWith('--key=')), `${file}: chesly ${words.join(' ')}`);
+        const at = words.indexOf('--key');
+        if (at !== -1) assert.equal(words[at + 1], '-', `${file}: chesly ${words.join(' ')} reads the key from stdin`);
+      }
+    }
+  }
+});
+
 test('no_end_to_end_claims_and_no_legal_language', () => {
   for (const file of copyFiles()) {
     const text = read(file);
@@ -423,9 +439,7 @@ test('the_command_reference_marks_what_wave_2_adds', () => {
 
 test('the_exit_codes_are_the_clis', () => {
   const table = section(read(join('skills', 'chesly', 'references', 'commands.md')), 'Exit codes');
-  const rows = table.split('\n').filter((line) => /^\| `?\d+`? \|/.test(line));
-  assert.deepEqual(rows.map((row) => Number(/\d+/.exec(row)[0])), EXIT_CODES.map(([code]) => code));
-  for (const [index, [code, words]] of EXIT_CODES.entries()) assert.match(rows[index], words, `exit ${code}`);
+  assert.deepEqual(table.split('\n').filter((line) => /^\| `?\d+`? \|/.test(line)), EXIT_CODES);
   for (const file of skillFiles('chesly')) {
     for (const [, code] of read(file).matchAll(/\bexits? (?:with |code )?(\d+)\b/gi)) {
       assert.ok(Number(code) <= 6, `${file}: there is no exit code ${code}`);

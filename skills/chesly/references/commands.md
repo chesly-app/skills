@@ -22,15 +22,19 @@ Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2.
 
 | Command | What it does |
 |---|---|
-| `chesly login --no-wait` | Starts a sign-in and returns at once. It prints the link to approve and its code: `verification_uri_complete`, `user_code` and `expires_in` (seconds) in JSON. (Wave 2) |
-| `chesly login --wait` | Waits until the user approves the code that `--no-wait` printed, then stores the key. (Wave 2) |
-| `chesly login` | Both steps in one, for a person at a terminal: prints the link, opens the browser, and waits for the approval. |
-| `chesly login --key <key>` | Checks a key the user already has, then stores it. On a server, setting `CHESLY_API_KEY` instead keeps the key out of shell history. |
-| `chesly logout` | Revokes the key this computer uses, and removes it. (Wave 2) |
+| `chesly login --no-wait` | Starts a sign-in and exits 0 at once. It prints `{"status":"pending","verification_uri_complete":"…","user_code":"…","expires_in":600}` on standard output, and opens the browser on the link where one can show. (Wave 2) |
+| `chesly login --wait` | Finishes that sign-in: waits until the user approves the code, stores the key, and prints `{"status":"signed_in",…}`. Cut short (Ctrl+C, a tool's time limit), it can run again. (Wave 2) |
+| `chesly login` | Both steps in one, for a person at a terminal: prints the link and the code, opens the browser, and waits for the approval. |
+| `chesly login --no-browser` | Signs in without opening a browser, to approve on another device. (Wave 2) |
+| `chesly login --force` | Signs in with a new key even though the stored one still works. Without it, `chesly login` says "Already signed in" (`already_signed_in`) and makes no new key. (Wave 2) |
+| `chesly login --key -` | Reads a key the user already has from standard input, checks it, then stores it. (Wave 2) |
+| `chesly logout` | Revokes the stored key, so it stops working everywhere, then removes it from this computer. Offline, or with a read-only key, it still signs out, and says the key is still active. (Wave 2) |
 | `chesly whoami` | The key in use: its name, scope (`full` or `read`), API version, limits and usage. |
 | `chesly key [--reveal]` | The key in use, masked. `--reveal` prints the whole key and nothing else, for MCP clients. |
 
-The key goes to the OS keychain, or to `~/.config/chesly/credentials.json` (mode 0600) where there is no keychain. `CHESLY_API_KEY`, when set, wins over the stored key. A sign-in code expires after `expires_in` seconds; `--wait` then fails with `expired_token`, and a new `--no-wait` starts over. A denied sign-in fails with `access_denied`.
+Never put a key itself on a command line: the process list and shell history keep it. On a server or in CI, the user sets `CHESLY_API_KEY` instead (it wins over the stored key), or pipes the key to `chesly login --key -`.
+
+The key goes to the OS keychain, or to `~/.config/chesly/credentials.json` (mode 0600) where there is no keychain. A pending sign-in waits in `~/.config/chesly/pending-login.json` until `--wait` finishes it or the code expires, 10 minutes later; `--wait` then fails with `expired_token`, and a new `--no-wait` starts over. A denied sign-in fails with `access_denied`. Each sign-in makes a new key, and an account can have 25.
 
 A read-only key (scope `read`) can read, search and watch, but not send.
 
@@ -74,8 +78,8 @@ Names are looked up among chat networks only. To find an email thread by its sub
 - Text that starts with `-` goes after `--`: `chesly send "Mom" --json -- "-5 degrees here"`.
 - `--reply-to <msg_id>` quotes one message of that chat: an `id` from `read`, `catchup` or `search`.
 - `--file <path>` attaches one file of at most 50 MB, and the text becomes its caption. Email takes text only.
-- The answer is the sent message, its `delivery.status` `queued`. `--wait` waits up to 30 seconds for `sent`, `delivered` or `failed`. A failed delivery exits 1 with `delivery_failed` and the reason in `delivery.error.message`. When `delivery.error.certain` is false, the message may have gone out anyway.
-- Every send carries an idempotency key, and the CLI's own retries reuse it, so one command sends at most once. To retry a command later without sending twice, give it the same `--idempotency-key <key>` (a UUID, say) each time.
+- The answer is the sent message, its `delivery.status` `queued`. `--wait` waits up to 30 seconds for `sent`, `delivered` or `failed`. A failed delivery exits 1, with the reason in `delivery.error.message`. When `delivery.error.certain` is false, the message may have gone out anyway.
+- Every send carries an `Idempotency-Key`, and the CLI's own retries (after a network error, a 502, 503 or 504, or while a first attempt still runs) reuse it, so one command sends at most once. When it gives up without knowing whether the message went out, the error carries the key as `idempotency_key`: run the same command again with `--idempotency-key <that key>`, and the API answers with the first attempt's result instead of sending again.
 - Each connected account may send 60 messages an hour and 250 a day on WhatsApp, and 30 an hour and 150 a day on every other network, email included. Over a limit, the send exits 5 with `send_limit_reached` and `retry_after`.
 - Text limits, in UTF-16 code units: Instagram 1,000; Discord 2,000; Telegram 4,096; email 100,000; every other network 10,000. Longer text is refused with `text_too_long`.
 - Also refused: a message request (`message_request`), a chat Chesly can't send to (`unsupported_chat`), a `--reply-to` from another chat (`invalid_reply_to`), and any send with a read-only key (`insufficient_scope`).
@@ -90,7 +94,7 @@ Names are looked up among chat networks only. To find an email thread by its sub
 - Each line is an event: `id` (`evt_…`), `type`, `timestamp` and `data`.
 - The types: `message.received`, `message.sent` (the user's own, from any device), `message.edited`, `message.deleted`, `message.delivery_failed`, `chat.created`, `chat.updated`, `chat.read`, `account.connected`, `account.disconnected`, `account.needs_attention`, `reaction.added` and `reaction.removed`.
 - For `message.received`, `message.sent` and `message.edited`, `data` holds `message` and `chat` (`id`, `name`, `network`, `type`).
-- Without `--after`, the stream starts with new events. It reconnects by itself after a drop and resumes after the last event it printed. To resume after a restart, pass `--after` with the last `id` you handled. Events are kept 4 days.
+- Without `--after`, the stream starts with new events. It reconnects by itself after a drop and resumes after the last event it printed. To resume after a restart, pass `--after` with the last `id` you handled. Events are kept 4 days: an older resume point starts again from new events, with a warning.
 - The same event can arrive twice: skip an `id` you have seen.
 - Email events come only when `--networks` names `email`.
 - At most 5 streams can be open at once; a sixth exits 5 with `too_many_streams`.
@@ -116,7 +120,7 @@ Without `--networks`, a webhook gets every network but email. The `chesly-api` s
 | `chesly keys revoke <key_id>` | Revokes a key. Its next request is refused. (Wave 2) |
 | `chesly usage` | The plan, this period's calls and estimated cost, and how many messages each account can still send. (Wave 2) |
 
-New keys come from `chesly login`, or from https://web.chesly.app/api/keys.
+New keys come from `chesly login`, or from https://web.chesly.app/api/keys. `keys list` marks the key this CLI uses; after revoking that one, run `chesly login` again.
 
 ## Network names
 
@@ -126,13 +130,15 @@ New keys come from `chesly login`, or from https://web.chesly.app/api/keys.
 
 | Code | Meaning |
 |---|---|
-| `0` | ok |
-| `1` | An error. Its JSON on standard error says which (`code`). |
-| `2` | A usage error: a missing argument or an unknown option. |
-| `3` | Not signed in: no key, a malformed one, or a key the API refused. Sign in again. |
-| `4` | Not found (`chat_not_found` and others), or a chat name that matches several chats (`ambiguous_chat`, with `candidates`). |
-| `5` | Retry later: a rate limit, or (Wave 2) Chesly briefly unavailable. Wait the error's `retry_after` seconds, then run it again. |
-| `6` | Payment required (402): no API plan, or a plan limit reached. The user starts the plan, or raises its limit, at https://web.chesly.app/api/billing. (Wave 2) |
+| 0 | ok |
+| 1 | error |
+| 2 | usage |
+| 3 | not signed in (no key, a malformed one, or the key was rejected) |
+| 4 | not found (an unknown chat, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |
+| 5 | temporary, retry later: rate limited (a 429: too many requests, a send cap, or too many open event streams) or briefly unavailable (a 503). `retry_after` says when, if the answer has it |
+| 6 | payment required: the account needs an API plan, or a limit of its plan is reached |
+
+A `400` `invalid_request` also exits 2, as a usage error. A send whose first attempt still runs after the CLI's retries (`409` `idempotency_in_progress`) exits 5. Those two, exit 5 for a 503, and exit 6 arrive with Wave 2. On exit 6, the user starts the plan, or raises its limit, at https://web.chesly.app/api/billing.
 
 ## Errors
 
@@ -142,7 +148,10 @@ In JSON mode, an error is one line on standard error, as problem details:
 {"type":"https://agents.chesly.app/docs/errors#rate_limited","title":"Too many requests.","status":429,"detail":"This API key made more than 600 requests in one minute. Retry in 4 s.","code":"rate_limited","request_id":"571d003e-ad60-4a08-858a-b7b5353f39db","retry_after":4}
 ```
 
-Branch on `code`. The CLI's own errors carry `type`, `title` and `code`, plus fields of their own, such as `candidates`. https://agents.chesly.app/docs/errors lists every code.
+- Branch on `code`. https://agents.chesly.app/docs/errors lists every code.
+- The CLI's own errors carry `type`, `title` and `code`, plus fields of their own: `candidates` for an ambiguous chat name, `idempotency_key` for a send that may or may not have gone out.
+- An answer that isn't problem details, such as a gateway's 502 during a Chesly deploy, gets a code built from its status: `http_502` and the like, or `http_error`. Run the command again after a few seconds.
+- Notices, such as `watch` reconnecting, also go to standard error, one JSON line each: `{"warning":"<code>","message":"…"}`.
 
 ## Environment
 

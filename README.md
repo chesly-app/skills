@@ -14,7 +14,7 @@ npx skills add chesly-app/skills
 
 The skills CLI asks which of your agents get them. `-g` installs them for every project, `-a claude-code` picks the agent, and `-y` skips its questions. It needs Node 22.20 or later.
 
-The `chesly` skill then has your agent install the CLI and sign in:
+The `chesly` skill then has your agent install the CLI and sign you in: it shows you a link, and you approve the code on it. In a terminal of your own, that is:
 
 ```bash
 npm install -g chesly
