@@ -22,7 +22,7 @@ Each recipe runs the CLI with `--json` and reads its JSON. Before any send, show
    EOF
    ```
 
-5. Read `delivery.status`: `sent` means done (`delivered` appears only where the network reports it). On `failed`, tell the user `delivery.error.message`; if `delivery.error.certain` is false, it may have been delivered, so don't resend.
+5. Read `delivery.status`: `sent` means done (`delivered` appears only where the network reports it). A failure the network confirmed exits 1 with `delivery_failed`: tell the user `delivery.error.message`. One it didn't confirm exits 5 with `delivery_unconfirmed`: it may have been delivered, so don't resend; read the chat.
 
 ## Find who I owe a reply
 

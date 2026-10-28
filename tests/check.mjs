@@ -64,17 +64,17 @@ const EXIT_CODES = [
   '| 2 | usage |',
   '| 3 | not signed in (no key, a malformed one, or the key was rejected) |',
   '| 4 | not found (an unknown chat, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |',
-  '| 5 | temporary, retry later: rate limited (a 429: too many requests, a send cap, or too many open event streams), briefly unavailable (a 502, 503 or 504, from the API or a gateway), or a first attempt still running (a 409 `idempotency_in_progress`). `retry_after` says when, if the answer has it |',
+  '| 5 | not final, come back to it: rate limited (a 429: too many requests, a send cap, or too many open event streams), briefly unavailable (a 502, 503 or 504, from the API or a gateway), a first attempt still running (a 409 `idempotency_in_progress`), or a send the network didn\'t confirm (`delivery_unconfirmed`: check the chat before you send it again). `retry_after` says when, if the answer has it |',
   '| 6 | payment required: the account needs an API plan, or a limit of its plan is reached |',
 ];
 
 /** The codes the CLI raises itself, and its warnings, as its errors export lists them (`LOCAL_ERROR_CODES`, `LOCAL_WARNING_CODES`). */
 const CLI_ERROR_CODES = ['access_denied', 'ambiguous_chat', 'chat_not_found', 'credentials_file_error', 'delivery_failed',
-  'expired_token', 'file_unreadable', 'internal_error', 'invalid_api_url', 'invalid_key_format', 'invalid_response',
+  'delivery_unconfirmed', 'expired_token', 'file_unreadable', 'internal_error', 'invalid_api_url', 'invalid_key_format', 'invalid_response',
   'keychain_error', 'keychain_timeout', 'login_not_started', 'media_too_large', 'network_error', 'not_signed_in',
   'usage_error', 'http_400', 'http_404', 'http_413', 'http_429', 'http_500', 'http_502', 'http_503', 'http_504',
   'http_error'];
-const CLI_WARNING_CODES = ['delivery_wait_failed', 'env_key_set', 'events_expired', 'invalid_event',
+const CLI_WARNING_CODES = ['delivery_wait_failed', 'env_key_set', 'event_too_large', 'events_expired', 'invalid_event',
   'key_details_unavailable', 'key_still_active', 'reconnecting'];
 
 /** The networks, as people name them and as the API does (`network`, `--network`). */
@@ -1108,4 +1108,37 @@ test('reply_to_is_a_message_of_the_same_chat', () => {
     assert.ok(parseMarkdown(text).inline.includes('invalid_reply_to'), 'names invalid_reply_to');
     assert.match(text, /same chat|that chat/);
   }
+});
+
+/** A text's clauses: split at a `.`, `;` or `:` before a space, and at line ends, code spans kept whole. */
+function clauses(markdown) {
+  const spans = [];
+  const text = markdown.replace(INLINE_CODE, (span) => `\u0000${spans.push(span) - 1}\u0000`);
+  return text.split(/[.;:](?=\s)|\n/).map((clause) => clause.replace(/\u0000(\d+)\u0000/g, (_, i) => spans[Number(i)]));
+}
+
+/**
+ * Clauses that put an unconfirmed delivery under exit 1: the CLI exits 1 (`delivery_failed`) only for a
+ * failure the network confirmed, and 5 (`delivery_unconfirmed`) for one it didn't, which may have arrived.
+ */
+function exitOneProblems(markdown) {
+  return clauses(markdown).filter((clause) => /\bexits? 1\b/.test(clause) && /delivery_failed/.test(clause)
+    && (!/confirmed|certain/.test(clause) || /didn't confirm|unconfirmed|certain` is false|`certain: false`/.test(clause)));
+}
+
+test('the_exit_1_check_finds_an_unconfirmed_failure_under_it', () => {
+  assert.deepEqual(exitOneProblems('A failure the network confirmed exits 1 with `delivery_failed`. One it didn\'t confirm exits 5 with `delivery_unconfirmed`.'), []);
+  assert.equal(exitOneProblems('A send whose delivery failed exits 1 with `delivery_failed`.').length, 1);
+  assert.equal(exitOneProblems('If `delivery.error.certain` is false, it exits 1 with `delivery_failed`').length, 1);
+  assert.equal(clauses('Read `delivery.error.certain`. Then: go; stop').length, 4, 'a dot inside code ends no clause');
+});
+
+test('an_unconfirmed_delivery_exits_5_never_1', () => {
+  const chesly = (name) => read(join('skills', 'chesly', ...name.split('/')));
+  for (const file of ['SKILL.md', 'references/commands.md', 'references/recipes.md']) {
+    assert.deepEqual(exitOneProblems(chesly(file)), [], file);
+    assert.ok(clauses(chesly(file)).some((clause) => /`delivery_unconfirmed`/.test(clause) && /\bexits? 5\b/.test(clause)), `${file} says delivery_unconfirmed exits 5`);
+  }
+  const exit5 = chesly('SKILL.md').split('\n').find((line) => line.startsWith('- Exit 5'));
+  assert.match(exit5, /`delivery_unconfirmed`[^.]*don't resend/, 'the exit 5 rule never reruns an unconfirmed send');
 });
