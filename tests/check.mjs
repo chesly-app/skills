@@ -34,16 +34,19 @@ const CLI = {
   read: { wave: 1, options: { '--limit': 1, '--cursor': 1, '--network': 2 } },
   search: { wave: 1, options: { '--chat': 1, '--limit': 1, '--network': 2 } },
   catchup: { wave: 1, options: { '--chats': 1, '--per-chat': 1, '--network': 2 } },
-  send: { wave: 2, options: { '--reply-to': 2, '--file': 2, '--wait': 2, '--idempotency-key': 2, '--network': 2 } },
+  send: {
+    wave: 2,
+    options: { '--reply-to': 2, '--file': 2, '--media-id': 2, '--wait': 2, '--idempotency-key': 2, '--network': 2 },
+  },
   watch: { wave: 2, options: { '--chat': 2, '--account': 2, '--types': 2, '--networks': 2, '--after': 2 } },
   webhooks: {
     wave: 2,
     subcommands: {
       list: {},
-      create: { '--types': 2, '--networks': 2, '--payload': 2, '--description': 2 },
+      create: { '--types': 2, '--networks': 2, '--payload': 2, '--description': 2, '--idempotency-key': 2 },
       delete: {},
-      rotate: {},
-      test: {},
+      rotate: { '--idempotency-key': 2 },
+      test: { '--idempotency-key': 2 },
       deliveries: { '--status': 2, '--limit': 2, '--cursor': 2 },
     },
   },
@@ -61,9 +64,18 @@ const EXIT_CODES = [
   '| 2 | usage |',
   '| 3 | not signed in (no key, a malformed one, or the key was rejected) |',
   '| 4 | not found (an unknown chat, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |',
-  '| 5 | temporary, retry later: rate limited (a 429: too many requests, a send cap, or too many open event streams) or briefly unavailable (a 503). `retry_after` says when, if the answer has it |',
+  '| 5 | temporary, retry later: rate limited (a 429: too many requests, a send cap, or too many open event streams), briefly unavailable (a 502, 503 or 504, from the API or a gateway), or a first attempt still running (a 409 `idempotency_in_progress`). `retry_after` says when, if the answer has it |',
   '| 6 | payment required: the account needs an API plan, or a limit of its plan is reached |',
 ];
+
+/** The codes the CLI raises itself, and its warnings, as its errors export lists them (`LOCAL_ERROR_CODES`, `LOCAL_WARNING_CODES`). */
+const CLI_ERROR_CODES = ['access_denied', 'ambiguous_chat', 'chat_not_found', 'credentials_file_error', 'delivery_failed',
+  'expired_token', 'file_unreadable', 'internal_error', 'invalid_api_url', 'invalid_key_format', 'invalid_response',
+  'keychain_error', 'keychain_timeout', 'login_not_started', 'media_too_large', 'network_error', 'not_signed_in',
+  'usage_error', 'http_400', 'http_404', 'http_413', 'http_429', 'http_500', 'http_502', 'http_503', 'http_504',
+  'http_error'];
+const CLI_WARNING_CODES = ['delivery_wait_failed', 'env_key_set', 'events_expired', 'invalid_event',
+  'key_details_unavailable', 'key_still_active', 'reconnecting'];
 
 /** The networks, as people name them and as the API does (`network`, `--network`). */
 const NETWORK_NAMES = ['WhatsApp', 'iMessage', 'Instagram', 'Messenger', 'Telegram', 'Signal', 'Discord', 'Slack',
@@ -162,11 +174,9 @@ const API_NAMES = new Set([
   'webhook_not_found', 'webhook_limit_reached', 'invalid_webhook_url', 'not_a_voice_note', 'transcription_unavailable',
   'key_not_found', 'api_plan_required', 'trial_limit_reached', 'spend_limit_reached', 'calls_exhausted',
   'already_subscribed', 'terms_changed', 'email_send_failed', 'account_reconnect_required', 'api_paused',
-  // Error codes: the CLI's own, and a failed delivery's.
-  'access_denied', 'ambiguous_chat', 'credentials_file_error', 'expired_token', 'invalid_api_url', 'invalid_key_format',
-  'invalid_response', 'keychain_error', 'keychain_timeout', 'network_error', 'not_signed_in', 'usage_error',
-  'http_400', 'http_404', 'http_413', 'http_429', 'http_500', 'http_502', 'http_503', 'http_504', 'http_error',
-  'network_rejected', 'not_logged_in', 'rate_limited_by_network',
+  'payload_too_large',
+  // Error and warning codes: the CLI's own, and a failed delivery's.
+  ...CLI_ERROR_CODES, ...CLI_WARNING_CODES, 'network_rejected', 'not_logged_in', 'rate_limited_by_network',
   // Other clients' settings: OpenAI's Responses API and Codex.
   'server_label', 'server_url', 'allowed_tools', 'require_approval', 'bearer_token_env_var', 'mcp_servers',
 ]);
@@ -819,6 +829,20 @@ test('the_exit_codes_are_the_clis', () => {
       assert.ok(Number(code) <= 6, `${file}: there is no exit code ${code}`);
     }
   }
+});
+
+test('the_command_reference_lists_the_clis_own_codes_and_warnings', () => {
+  const { inline } = parseMarkdown(section(read(join('skills', 'chesly', 'references', 'commands.md')), 'Errors'));
+  assert.deepEqual([...CLI_ERROR_CODES, ...CLI_WARNING_CODES].filter((code) => !inline.includes(code)), []);
+});
+
+test('the_chesly_skill_says_how_to_handle_a_failed_or_unclear_send', () => {
+  const skill = read(join('skills', 'chesly', 'SKILL.md'));
+  const { inline } = parseMarkdown(skill);
+  for (const words of ['delivery_failed', 'idempotency_key', '--idempotency-key <that key>', '--media-id <media_id> --idempotency-key <key>', '--file']) {
+    assert.ok(inline.includes(words), `the chesly skill names ${words}`);
+  }
+  assert.match(skill, /without `retry_after`[^.]*a few seconds[^.]*give up after a few tries/, 'exit 5 with no retry_after');
 });
 
 test('the_references_name_every_network', () => {

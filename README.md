@@ -39,7 +39,7 @@ The plugin brings both skills and the Chesly MCP server. Claude Code asks for yo
 
 ## Development
 
-- `npm test` checks every skill: its name and description, its links, and every `chesly` command and option, endpoint, MCP tool, event type, field and error code it names, against the product's. It also checks the plugin's manifests.
+- `npm test` checks every skill: its name and description, its links, and every `chesly` command and option, endpoint, MCP tool, event type, field and error code it names. It checks them against a copy of the CLI's and the API's facts kept by hand in `tests/check.mjs`, so when the CLI or the API changes, change that copy first. It also checks the plugin's manifests.
 - `npm run validate` runs `claude plugin validate . --strict`, Claude Code's own check of the plugin and the marketplace.
 - `claude --plugin-dir .` starts Claude Code with the plugin loaded from this folder, without installing it.
 
