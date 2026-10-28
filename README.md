@@ -5,6 +5,7 @@ Agent skills for [Chesly](https://agents.chesly.app). With them, your agent read
 | Skill | What your agent learns |
 |---|---|
 | [`chesly`](skills/chesly/SKILL.md) | The `chesly` CLI: catch up, read, search, reply and watch |
+| [`chesly-api`](skills/chesly-api/SKILL.md) | The Chesly API for code and agent setups: REST, live events, signed webhooks and the MCP server |
 
 ## Install
 

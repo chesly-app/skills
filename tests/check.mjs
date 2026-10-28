@@ -1,8 +1,10 @@
-// The repo's own checks: what the skills tell an agent must be true of the chesly CLI.
-// Run with `npm test` (node:test, no dependencies).
+// The repo's own checks: what the skills tell an agent must be true of the chesly CLI, the REST API
+// and the MCP server. Run with `npm test` (node:test, no dependencies).
 //
-// The facts below mirror the CLI (`chesly --help`). When the CLI changes, change them here first,
-// then the skills: a skill that names a command, option or exit code the CLI lacks fails.
+// The facts below mirror the CLI (`chesly --help`) and the API (its OpenAPI document at
+// https://api.chesly.app/v1/openapi.json, and the MCP server's tools/list). When either changes,
+// change them here first, then the skills: a skill that names a command, option, exit code,
+// endpoint, tool, event type, field or error code the product lacks fails.
 
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -69,11 +71,119 @@ const NETWORK_NAMES = ['WhatsApp', 'iMessage', 'Instagram', 'Messenger', 'Telegr
 const NETWORK_IDS = ['whatsapp', 'imessage', 'instagram', 'messenger', 'telegram', 'signal', 'discord', 'slack',
   'linkedin', 'twitter', 'gmessages', 'googlechat', 'reddit', 'email'];
 
+/** The REST API's endpoints, each with the wave that brings it. */
+const ENDPOINTS = {
+  'GET /v1/me': 1,
+  'GET /v1/accounts': 1,
+  'GET /v1/chats': 1,
+  'GET /v1/chats/{chat_id}': 1,
+  'GET /v1/chats/{chat_id}/messages': 1,
+  'POST /v1/chats/{chat_id}/read': 1,
+  'GET /v1/messages': 1,
+  'GET /v1/messages/search': 1,
+  'GET /v1/messages/{message_id}': 1,
+  'GET /v1/catch_up': 1,
+  'GET /v1/media/{media_id}': 1,
+  'POST /v1/media': 2,
+  'POST /v1/chats/{chat_id}/messages': 2,
+  'GET /v1/events': 2,
+  'GET /v1/events/stream': 2,
+  'GET /v1/webhooks': 2,
+  'POST /v1/webhooks': 2,
+  'GET /v1/webhooks/{id}': 2,
+  'PATCH /v1/webhooks/{id}': 2,
+  'DELETE /v1/webhooks/{id}': 2,
+  'POST /v1/webhooks/{id}/rotate_secret': 2,
+  'POST /v1/webhooks/{id}/test': 2,
+  'GET /v1/webhooks/{id}/deliveries': 2,
+  'GET /v1/contacts': 2,
+  'POST /v1/messages/{message_id}/transcript': 2,
+  'GET /v1/keys': 2,
+  'DELETE /v1/keys/{key_id}': 2,
+  'GET /v1/openapi.json': 2,
+};
+
+/** The MCP server's tools: the wave that brings each, and whether a read-only key sees it. */
+const TOOLS = {
+  list_accounts: { wave: 1, readKey: true },
+  list_chats: { wave: 1, readKey: true },
+  catch_up: { wave: 1, readKey: true },
+  read_chat: { wave: 1, readKey: true },
+  search_messages: { wave: 1, readKey: true },
+  get_message: { wave: 1, readKey: true },
+  mark_read: { wave: 1, readKey: false },
+  send_message: { wave: 2, readKey: false },
+  find_contact: { wave: 2, readKey: true },
+  transcribe_voice_note: { wave: 2, readKey: false },
+};
+/** The tools that take a `network` input (Wave 2). */
+const NETWORK_INPUT_TOOLS = ['list_chats', 'catch_up', 'search_messages'];
+/** The verbs a tool name starts with: a name shaped like one that isn't a tool is a wrong tool name. */
+const TOOL_SHAPE = /^(list|get|send|search|read|mark|find|transcribe|catch|create|update|delete|upload|fetch|watch|reply|add|remove)_[a-z_]+$/;
+
+/** The event catalog. */
+const EVENT_TYPES = ['message.received', 'message.sent', 'message.edited', 'message.deleted', 'message.delivery_failed',
+  'chat.created', 'chat.updated', 'chat.read', 'account.connected', 'account.disconnected', 'account.needs_attention',
+  'reaction.added', 'reaction.removed'];
+
+/**
+ * Every snake_case name a skill may write: the tools and their inputs, query parameters, the
+ * fields of the API's answers and events, error codes, and the settings of the clients the MCP
+ * setup covers.
+ */
+const API_NAMES = new Set([
+  ...Object.keys(TOOLS),
+  // Tool inputs and query parameters.
+  'per_chat', 'chat_id', 'message_id', 'reply_to', 'media_id', 'idempotency_key', 'account_id', 'updated_since',
+  // Fields: accounts, chats, messages and pages.
+  'display_name', 'connected_at', 'unread_count', 'last_message_at', 'is_archived', 'is_pinned', 'is_muted',
+  'is_message_request', 'member_count', 'is_me', 'sent_at', 'mime_type', 'file_name', 'next_cursor', 'has_more',
+  'chat_name', 'receipt_sent',
+  // Fields: GET /v1/me, its plan and its send limits.
+  'api_version', 'requests_per_second', 'requests_per_minute', 'period_start', 'period_end', 'event_streams', 'per_hour',
+  'per_day', 'used_last_hour', 'used_last_day', 'trial_ends_at', 'included_calls', 'calls_this_period', 'overage_calls',
+  'transcription_seconds_this_period', 'estimated_amount_cents', 'spend_limit_cents', 'billing_route',
+  'pack_balance_calls',
+  // Fields: delivery, events, webhooks and their deliveries, contacts, transcripts, keys and problems.
+  'updated_at', 'created_at', 'last_read_message_id', 'event_types', 'disabled_reason', 'failing_since',
+  'previous_secret_expires_at', 'delivery_id', 'event_id', 'event_type', 'next_attempt_at', 'last_attempt_at',
+  'last_status_code', 'last_error', 'last_response_excerpt', 'delivered_at', 'duration_seconds', 'created_via',
+  'last_used_at', 'request_id', 'retry_after',
+  // chesly login's answers: --no-wait (the device flow), --wait, and a login that keeps a working key.
+  'verification_uri_complete', 'user_code', 'expires_in', 'signed_in', 'already_signed_in', 'stored_in',
+  // Values: an account's status, a plan's status.
+  'needs_attention', 'past_due',
+  // Error codes: the API's.
+  'account_not_found', 'chat_not_found', 'message_not_found', 'media_not_found', 'media_expired', 'media_too_large',
+  'media_unavailable', 'invalid_cursor', 'rate_limited', 'network_unavailable', 'search_unavailable', 'feed_unavailable',
+  'upstream_unavailable', 'signing_key_missing', 'invalid_request', 'invalid_api_key', 'insufficient_scope', 'not_found',
+  'internal_error', 'idempotency_key_invalid', 'idempotency_key_reused', 'idempotency_in_progress', 'message_request',
+  'send_limit_reached', 'text_too_long', 'invalid_reply_to', 'unsupported_chat', 'events_expired', 'too_many_streams',
+  'webhook_not_found', 'webhook_limit_reached', 'invalid_webhook_url', 'not_a_voice_note', 'transcription_unavailable',
+  'key_not_found', 'api_plan_required', 'trial_limit_reached', 'spend_limit_reached', 'calls_exhausted',
+  'already_subscribed', 'terms_changed', 'email_send_failed', 'account_reconnect_required', 'api_paused',
+  // Error codes: the CLI's own, and a failed delivery's.
+  'access_denied', 'ambiguous_chat', 'credentials_file_error', 'expired_token', 'invalid_api_url', 'invalid_key_format',
+  'invalid_response', 'keychain_error', 'keychain_timeout', 'network_error', 'not_signed_in', 'usage_error',
+  'http_400', 'http_404', 'http_413', 'http_429', 'http_500', 'http_502', 'http_503', 'http_504', 'http_error',
+  'network_rejected', 'not_logged_in', 'rate_limited_by_network',
+  // Other clients' settings: OpenAI's Responses API and Codex.
+  'server_label', 'server_url', 'allowed_tools', 'require_approval', 'bearer_token_env_var', 'mcp_servers',
+]);
+
+/** The MCP server's one URL in this repo, until the mcp.chesly.app name is live. */
+const MCP_URL = 'https://api.chesly.app/mcp';
+
 const SKILLS = {
   chesly: {
     description:
       "Read, search, watch and reply to the user's own messages across the chat networks and email they connected in Chesly, using the chesly CLI. Use when the user asks what they missed, about a chat or a person, who they owe a reply, to find a message, to answer someone, or to keep watching for new messages.",
     references: ['references/commands.md', 'references/recipes.md'],
+  },
+  'chesly-api': {
+    description:
+      "Build with the Chesly API: REST at https://api.chesly.app/v1, live events over SSE or signed webhooks, and the remote MCP server, for the user's own chats and email. Use when writing code or agent configuration that reads, sends or reacts to the user's messages.",
+    references: ['references/rest.md', 'references/events-and-webhooks.md', 'references/mcp.md'],
   },
 };
 
@@ -263,6 +373,96 @@ function commandProblems(words) {
 const problemsIn = (code) => cheslyCommands(code).flatMap(commandProblems);
 
 // ---------------------------------------------------------------------------------------------
+// Reading endpoints, tools, event types and API names out of Markdown
+// ---------------------------------------------------------------------------------------------
+
+/** A path under /v1, its IDs written as `{chat_id}`, `<msg_id>` or real IDs. A sentence's last dot isn't in it. */
+const V1_PATH = String.raw`\/v1(?:\/(?:<[^>\s]*>|\{[^}\s]*\}|[\w…-]+(?:\.[\w…-]+)*))*`;
+const METHOD_PATH = new RegExp(String.raw`\b(GET|POST|PATCH|PUT|DELETE|HEAD) (${V1_PATH})`, 'g');
+const API_URL_PATH = new RegExp(String.raw`https:\/\/api\.chesly\.app(${V1_PATH})`, 'g');
+const BARE_PATH = new RegExp(String.raw`(?<![\w./-])(${V1_PATH})`, 'g');
+/** A path segment that stands for an ID: `{chat_id}`, `<msg_id>`, `:id`, or a real ID such as `chat_…`. */
+const ID_SEGMENT = /^(\{[^}]*\}|<[^>]*>|:\w+|(acct|chat|msg|media|evt|wh|dlv|contact)_.*)$/;
+
+const normalizePath = (path) =>
+  path.replace(/\/+$/, '').split('/').map((segment) => (ID_SEGMENT.test(segment) ? '{}' : segment)).join('/');
+const endpointKey = (method, path) => `${method} ${normalizePath(path)}`;
+const ENDPOINT_WAVES = new Map(Object.entries(ENDPOINTS).map(([endpoint, wave]) => [endpointKey(...endpoint.split(' ')), wave]));
+/** Every path an endpoint has, and the API's base. */
+const PATHS = new Set(['/v1', ...[...ENDPOINT_WAVES.keys()].map((endpoint) => endpoint.split(' ')[1])]);
+
+/** Each curl request to the API in a piece of shell, as [method, path]. */
+function curlRequests(code) {
+  return code
+    .replace(/\\\n/g, ' ')
+    .split('\n')
+    .filter((line) => /\bcurl\b/.test(line))
+    .flatMap((line) => {
+      const named = /(?:-X|--request) ([A-Z]+)/.exec(line)?.[1];
+      const method = named ?? (/ (-d|--data[\w-]*|-F|--form|--json) /.test(line) ? 'POST' : 'GET');
+      return [...line.matchAll(API_URL_PATH)].map((match) => [method, match[1]]);
+    });
+}
+
+/** What is wrong with the endpoints a Markdown text names: a path, method or request the API lacks. */
+function endpointProblems(markdown) {
+  const problems = [];
+  for (const regex of [API_URL_PATH, BARE_PATH]) {
+    for (const [, path] of markdown.matchAll(regex)) {
+      if (!PATHS.has(normalizePath(path))) problems.push(`no endpoint has the path ${path}`);
+    }
+  }
+  for (const [, method, path] of markdown.matchAll(METHOD_PATH)) {
+    if (PATHS.has(normalizePath(path)) && !ENDPOINT_WAVES.has(endpointKey(method, path))) problems.push(`there is no ${method} ${path}`);
+  }
+  for (const code of codeOf(markdown)) {
+    for (const [method, path] of curlRequests(code)) {
+      if (PATHS.has(normalizePath(path)) && !ENDPOINT_WAVES.has(endpointKey(method, path))) problems.push(`curl sends ${method} ${path}, which the API lacks`);
+    }
+  }
+  return problems;
+}
+
+/** Names shaped like a tool's: inline code that is one name, and quoted names in code blocks. */
+function toolProblems(markdown) {
+  const { blocks, inline } = parseMarkdown(markdown);
+  const quoted = blocks.flatMap((block) => [...block.matchAll(/["']([a-z_]+)["']/g)].map((match) => match[1]));
+  return [...inline, ...quoted]
+    .filter((name) => TOOL_SHAPE.test(name) && !(name in TOOLS) && !API_NAMES.has(name))
+    .map((name) => `${name} is not one of the 10 tools`);
+}
+
+const SNAKE_NAME = /(?<![\w$-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w-])/g;
+/** An event type's shape, such as `message.delivery_failed`: eventTypeProblems checks those. */
+const EVENT_TYPE_SHAPE = /(?<![\w.$])(?:message|chat|account|reaction)\.[a-z_]+\b(?!\()/g;
+
+/** What the name check leaves out of inline code: placeholders, quoted text, URLs and /v1 paths. */
+const NOT_NAMES = new RegExp(String.raw`<[^>]*>|"[^"]*"|'[^']*'|https?:\/\/\S+|${V1_PATH}`, 'g');
+
+/**
+ * The snake_case names a Markdown text uses that the API doesn't have: in inline code (placeholders,
+ * quoted text, URLs, paths and event types aside), and as the keys of JSON code blocks.
+ */
+function nameProblems(markdown) {
+  const { blocks, inline } = parseMarkdown(markdown);
+  const inInline = inline.flatMap((span) =>
+    [...span.replace(NOT_NAMES, ' ').replace(EVENT_TYPE_SHAPE, ' ').matchAll(SNAKE_NAME)].map((match) => match[0]));
+  const inJson = blocks
+    .filter((block) => /^\s*[{[]/.test(block))
+    .flatMap((block) => [...block.matchAll(/"([^"\s]+)"\s*:/g)].map((match) => match[1]))
+    .filter((key) => /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(key));
+  return [...inInline, ...inJson].filter((name) => !API_NAMES.has(name)).map((name) => `the API has no ${name}`);
+}
+
+/** Event types a Markdown text names in code that aren't in the catalog. */
+function eventTypeProblems(markdown) {
+  return codeOf(markdown)
+    .flatMap((code) => [...code.matchAll(EVENT_TYPE_SHAPE)].map((match) => match[0]))
+    .filter((type) => !EVENT_TYPES.includes(type))
+    .map((type) => `there is no event ${type}`);
+}
+
+// ---------------------------------------------------------------------------------------------
 // The checker's own behaviour
 // ---------------------------------------------------------------------------------------------
 
@@ -280,6 +480,39 @@ test('the_command_check_finds_unknown_commands_subcommands_and_options', () => {
   assert.deepEqual(problemsIn('chesly webhooks remove wh_1'), ['"webhooks" has no subcommand "remove"']);
   assert.deepEqual(problemsIn('--header "Authorization: Bearer $(chesly key --revael)"'), ['"key" has no option --revael']);
   assert.deepEqual(problemsIn('chesly catchup --json | jq .\nchesly chats --unred'), ['"chats" has no option --unred']);
+});
+
+test('the_endpoint_check_finds_paths_methods_and_requests_the_api_lacks', () => {
+  assert.deepEqual(endpointProblems('`GET /v1/chats/{chat_id}/messages` and `POST /v1/messages/<msg_id>/transcript`'), []);
+  assert.deepEqual(endpointProblems('`curl -N "https://api.chesly.app/v1/events/stream?after=evt_1"`'), []);
+  assert.deepEqual(endpointProblems('```bash\ncurl https://api.chesly.app/v1/chats/chat_x/messages \\\n  -d \'{"text":"hi"}\'\n```'), []);
+  assert.deepEqual(endpointProblems('REST at https://api.chesly.app/v1, and `GET /v1/messages?since=`'), []);
+  assert.deepEqual(endpointProblems('The document is at https://api.chesly.app/v1/openapi.json.'), []);
+  assert.deepEqual(endpointProblems('`GET /v1/conversations`'), ['no endpoint has the path /v1/conversations']);
+  assert.deepEqual(endpointProblems('`DELETE /v1/chats/{chat_id}`'), ['there is no DELETE /v1/chats/{chat_id}']);
+  assert.deepEqual(endpointProblems('```bash\ncurl https://api.chesly.app/v1/webhooks/wh_1/test\n```'), [
+    'curl sends GET /v1/webhooks/wh_1/test, which the API lacks',
+  ]);
+});
+
+test('the_tool_name_and_event_checks_find_what_the_api_lacks', () => {
+  assert.deepEqual(toolProblems('`send_message`, `catch_up`, `send_limit_reached` and `"allowed_tools": ["read_chat"]`'), []);
+  assert.deepEqual(toolProblems('`send_messages`\n```json\n{"allowed_tools": ["list_contacts"]}\n```'), [
+    'send_messages is not one of the 10 tools',
+    'list_contacts is not one of the 10 tools',
+  ]);
+  assert.deepEqual(nameProblems('`next_cursor`, `data.message.sender.is_me`, `--reply-to <msg_id>`, `CHESLY_API_KEY`'), []);
+  assert.deepEqual(nameProblems('`message.delivery_failed` and `account.needs_attention` are event types'), []);
+  assert.deepEqual(nameProblems('`DELETE /v1/keys/{key_id}` and `POST /v1/webhooks/{id}/rotate_secret` are paths'), []);
+  assert.deepEqual(nameProblems('`retry_afer`\n```json\n{"request_id": "x", "chat_title": "y"}\n```'), [
+    'the API has no retry_afer',
+    'the API has no chat_title',
+  ]);
+  assert.deepEqual(eventTypeProblems('`message.received`, `data.message.text`, `--types chat.read,reaction.added`'), []);
+  assert.deepEqual(eventTypeProblems('`message.created` and `{"type": "chat.renamed"}`'), [
+    'there is no event message.created',
+    'there is no event chat.renamed',
+  ]);
 });
 
 test('the_section_and_slug_readers_follow_github', () => {
@@ -357,6 +590,30 @@ test('no_command_puts_a_key_on_the_command_line', () => {
   }
 });
 
+test('every_endpoint_named_is_the_apis', () => {
+  assert.deepEqual(markdownFiles().flatMap((file) => endpointProblems(read(file)).map((problem) => `${file}: ${problem}`)), []);
+});
+
+test('every_tool_named_is_one_of_the_ten', () => {
+  assert.deepEqual(markdownFiles().flatMap((file) => toolProblems(read(file)).map((problem) => `${file}: ${problem}`)), []);
+});
+
+test('every_snake_case_name_is_the_apis', () => {
+  assert.deepEqual(markdownFiles().flatMap((file) => nameProblems(read(file)).map((problem) => `${file}: ${problem}`)), []);
+});
+
+test('every_event_type_is_in_the_catalog', () => {
+  assert.deepEqual(markdownFiles().flatMap((file) => eventTypeProblems(read(file)).map((problem) => `${file}: ${problem}`)), []);
+});
+
+test('the_mcp_url_is_one_value', () => {
+  for (const file of copyFiles()) {
+    const text = read(file);
+    for (const [url] of text.matchAll(/https?:\/\/[\w.-]*chesly\.app\/mcp\b/g)) assert.equal(url, MCP_URL, file);
+    assert.doesNotMatch(text, /mcp\.chesly\.app/, `${file}: the MCP server is at ${MCP_URL} until mcp.chesly.app is live`);
+  }
+});
+
 test('no_end_to_end_claims_and_no_legal_language', () => {
   for (const file of copyFiles()) {
     const text = read(file);
@@ -370,7 +627,7 @@ test('hidden_networks_are_never_named', () => {
 });
 
 test('every_network_is_named_linkedin_included', () => {
-  for (const file of ['README.md', join('skills', 'chesly', 'SKILL.md')]) {
+  for (const file of ['README.md', ...Object.keys(SKILLS).map((skill) => join('skills', skill, 'SKILL.md'))]) {
     const text = parseMarkdown(read(file)).prose;
     for (const network of NETWORK_NAMES) assert.match(text, new RegExp(`\\b${network}\\b`), `${file} names ${network}`);
   }
@@ -389,8 +646,10 @@ test('the_chesly_skill_guides_a_user_without_the_plugin', () => {
   assert.doesNotMatch(setup, /\bMCP\b/, 'the setup never needs the MCP server');
 });
 
-test('the_chesly_skill_shows_the_text_and_waits_for_ok_before_sending', () => {
-  assert.match(parseMarkdown(read(join('skills', 'chesly', 'SKILL.md'))).prose, ASK_BEFORE_SENDING);
+test('every_skill_shows_the_text_and_waits_for_ok_before_sending', () => {
+  for (const skill of Object.keys(SKILLS)) {
+    assert.match(parseMarkdown(read(join('skills', skill, 'SKILL.md'))).prose, ASK_BEFORE_SENDING, skill);
+  }
 });
 
 test('every_command_the_chesly_skill_runs_passes_json', () => {
@@ -447,9 +706,11 @@ test('the_exit_codes_are_the_clis', () => {
   }
 });
 
-test('the_command_reference_names_every_network', () => {
-  const inline = parseMarkdown(read(join('skills', 'chesly', 'references', 'commands.md'))).inline;
-  assert.deepEqual(NETWORK_IDS.filter((network) => !inline.includes(network)), []);
+test('the_references_name_every_network', () => {
+  for (const file of [join('skills', 'chesly', 'references', 'commands.md'), join('skills', 'chesly-api', 'references', 'rest.md')]) {
+    const inline = parseMarkdown(read(file)).inline;
+    assert.deepEqual(NETWORK_IDS.filter((network) => !inline.includes(network)), [], file);
+  }
 });
 
 test('the_recipes_cover_the_planned_tasks', () => {
@@ -459,4 +720,74 @@ test('the_recipes_cover_the_planned_tasks', () => {
     assert.match(recipes, new RegExp(`^## ${title}`, 'm'), `a recipe for "${title}"`);
   }
   assert.ok(codeOf(section(recipes, 'Catch up on email')).includes('chesly catchup --network email --json'));
+});
+
+// ---------------------------------------------------------------------------------------------
+// The chesly-api skill
+// ---------------------------------------------------------------------------------------------
+
+const apiReference = (name) => read(join('skills', 'chesly-api', 'references', name));
+
+test('the_rest_reference_covers_every_endpoint_and_marks_wave_2', () => {
+  const rest = apiReference('rest.md');
+  const named = new Set([...rest.matchAll(METHOD_PATH)].map(([, method, path]) => endpointKey(method, path)));
+  assert.deepEqual([...ENDPOINT_WAVES.keys()].filter((endpoint) => !named.has(endpoint)), []);
+  const rows = rest.split('\n').filter((line) => /^\| `(GET|POST|PATCH|DELETE) /.test(line));
+  assert.ok(rows.length > 0, 'the endpoints are in a table');
+  for (const row of rows) {
+    const endpoints = [...row.split('|')[1].matchAll(METHOD_PATH)].map(([, method, path]) => endpointKey(method, path));
+    const wave2 = endpoints.some((endpoint) => ENDPOINT_WAVES.get(endpoint) === 2);
+    assert.equal(row.includes('(Wave 2)'), wave2, `${row}\nshould ${wave2 ? '' : 'not '}be marked (Wave 2)`);
+  }
+});
+
+test('the_rest_reference_covers_the_planned_topics', () => {
+  const rest = apiReference('rest.md');
+  const code = codeOf(rest).join('\n');
+  for (const words of ['Authorization: Bearer ck_live_…', 'application/problem+json', 'https://agents.chesly.app/docs/errors#',
+    'Idempotency-Key', 'Idempotent-Replayed', 'next_cursor', 'network=email', 'updated_since', 'before', 'after',
+    'Retry-After', 'Chesly-Version']) {
+    assert.ok(code.includes(words), `rest.md covers ${words}`);
+  }
+  assert.ok(codeOf(rest).some((piece) => curlRequests(piece).some(([method, path]) => endpointKey(method, path) === 'POST /v1/chats/{}/messages')),
+    'rest.md sends a message with curl');
+  assert.match(rest, /https:\/\/api\.chesly\.app\/v1\/openapi\.json/);
+  assert.match(rest, /opaque/i, 'IDs are opaque');
+});
+
+test('the_mcp_reference_covers_the_ten_tools_and_marks_wave_2', () => {
+  const rows = apiReference('mcp.md').split('\n').filter((line) => /^\| `[a-z_]+` \|/.test(line));
+  const tool = (row) => /^\| `([a-z_]+)`/.exec(row)[1];
+  assert.deepEqual(rows.map(tool).sort(), Object.keys(TOOLS).sort());
+  for (const row of rows) {
+    const { wave, readKey } = TOOLS[tool(row)];
+    const wave2 = wave === 2 || (NETWORK_INPUT_TOOLS.includes(tool(row)) && row.includes('`network`'));
+    assert.equal(row.includes('(Wave 2)'), wave2, `${row}\nshould ${wave2 ? '' : 'not '}be marked (Wave 2)`);
+    assert.equal(row.split('|')[2].trim(), readKey ? 'any' : 'full', `${row}\nthe key it needs`);
+  }
+  for (const name of NETWORK_INPUT_TOOLS) assert.ok(rows.find((row) => tool(row) === name).includes('`network`'), name);
+});
+
+test('the_mcp_reference_sets_up_every_client', () => {
+  const mcp = apiReference('mcp.md');
+  for (const client of ['Claude Code', 'Codex', 'Cursor', "OpenAI's Responses API", 'OpenClaw', 'n8n']) {
+    assert.match(mcp, new RegExp(`^### ${client}$`, 'm'), `a setup for ${client}`);
+  }
+  const code = codeOf(mcp).map((piece) => piece.replace(/\s*\\\n\s*/g, ' '));
+  const claudeCode = `claude mcp add --transport http chesly ${MCP_URL} --header "Authorization: Bearer $(chesly key --reveal)"`;
+  assert.ok(code.some((piece) => piece.includes(claudeCode)), 'the Claude Code command');
+  assert.ok(code.some((piece) => /"type": "mcp"/.test(piece) && /server_url/.test(piece) && /authorization/.test(piece)), "OpenAI's mcp tool");
+  assert.match(mcp, /\b502\b[^.]*\bretry/i, 'a deploy can answer 502 for a moment: retry');
+});
+
+test('the_events_reference_covers_the_catalog_and_the_webhook_wire', () => {
+  const events = apiReference('events-and-webhooks.md');
+  const { inline } = parseMarkdown(events);
+  assert.deepEqual(EVENT_TYPES.filter((type) => !inline.includes(type)), []);
+  const code = codeOf(events).join('\n');
+  for (const words of ['Last-Event-ID', 'curl -N', 'after=', 'webhook-id', 'webhook-timestamp', 'webhook-signature',
+    'import { Webhook } from "standardwebhooks"', 'from standardwebhooks import Webhook']) {
+    assert.ok(code.includes(words), `the events reference covers ${words}`);
+  }
+  assert.match(events, /5 seconds, then 5 minutes, 30 minutes, 2 hours, 5 hours, 10 hours and 10 hours/, 'the retry schedule');
 });
