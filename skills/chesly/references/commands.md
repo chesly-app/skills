@@ -1,0 +1,152 @@
+# chesly commands
+
+`chesly --help` and `chesly <command> --help` describe every command. Every command also takes `--json`, which prints the API's JSON as it is (the default when the output is piped), and `--help`. Nothing ever prompts.
+
+Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2.
+
+## Contents
+
+- [Signing in](#signing-in)
+- [Reading](#reading)
+- [Chat names](#chat-names)
+- [Sending](#sending)
+- [Watching](#watching)
+- [Webhooks](#webhooks)
+- [Keys and usage](#keys-and-usage)
+- [Network names](#network-names)
+- [Exit codes](#exit-codes)
+- [Errors](#errors)
+- [Environment](#environment)
+
+## Signing in
+
+| Command | What it does |
+|---|---|
+| `chesly login --no-wait` | Starts a sign-in and returns at once. It prints the link to approve and its code: `verification_uri_complete`, `user_code` and `expires_in` (seconds) in JSON. (Wave 2) |
+| `chesly login --wait` | Waits until the user approves the code that `--no-wait` printed, then stores the key. (Wave 2) |
+| `chesly login` | Both steps in one, for a person at a terminal: prints the link, opens the browser, and waits for the approval. |
+| `chesly login --key <key>` | Checks a key the user already has, then stores it. On a server, setting `CHESLY_API_KEY` instead keeps the key out of shell history. |
+| `chesly logout` | Revokes the key this computer uses, and removes it. (Wave 2) |
+| `chesly whoami` | The key in use: its name, scope (`full` or `read`), API version, limits and usage. |
+| `chesly key [--reveal]` | The key in use, masked. `--reveal` prints the whole key and nothing else, for MCP clients. |
+
+The key goes to the OS keychain, or to `~/.config/chesly/credentials.json` (mode 0600) where there is no keychain. `CHESLY_API_KEY`, when set, wins over the stored key. A sign-in code expires after `expires_in` seconds; `--wait` then fails with `expired_token`, and a new `--no-wait` starts over. A denied sign-in fails with `access_denied`.
+
+A read-only key (scope `read`) can read, search and watch, but not send.
+
+## Reading
+
+| Command | What it does |
+|---|---|
+| `chesly accounts` | The connected accounts: each one's `id` (`acct_…`), `network`, `display_name` and `status` (`connected`, `disconnected` or `needs_attention`). |
+| `chesly chats [--unread] [--account <acct_id>] [--limit <n>] [--cursor <cursor>]` | Chats, pinned first, then the most recent. `--limit` is 1 to 100 (default 50). |
+| `chesly read <chat> [--limit <n>] [--cursor <cursor>]` | A chat's messages, newest first in JSON. `--limit` is 1 to 100 (default 50). |
+| `chesly search <query> [--chat <chat>] [--limit <n>]` | Messages that match, newest first, in every chat or one. Each result also has `chat_name` and `network`. The query is at most 200 characters; `--limit` is 1 to 100 (default 20). |
+| `chesly catchup [--chats <n>] [--per-chat <n>]` | Unread chats that aren't muted or archived, newest first, each with its newest messages: `--chats` 1 to 50 (default 20), `--per-chat` 1 to 20 (default 5). `truncated` is true when some text was left out to keep the answer short. |
+| `chesly chats --network <name>`, `chesly catchup --network <name>`, `chesly search <query> --network <name>` | Only that network. These lists leave email out unless the network is `email`. (Wave 2) |
+| `chesly read <chat> --network <name>` | Looks the chat name up on that network only, such as an email thread by its subject. (Wave 2) |
+
+A chat has `id`, `account_id`, `network`, `name`, `type` (`dm` or `group`), `unread_count`, `last_message_at`, `is_archived`, `is_pinned`, `is_muted`, `is_message_request` and `member_count`.
+
+A message has `id` (`msg_…`), `chat_id`, `sender` (`name`, `is_me`), `text`, `truncated`, `type` (`text`, `image`, `video`, `audio`, `file` or `other`), `media`, `sent_at`, `edited`, `deleted`, `reply_to` and `delivery`. Text is cut at 4,000 characters, and `truncated` says so. An email message also has `email` (`subject`, `from`, `to`, `cc`).
+
+When there is more, the JSON has a `next_cursor`, and the same command with `--cursor <next_cursor>` gets the next page (older messages, for `read`).
+
+## Chat names
+
+A `<chat>` is a chat ID (`chat_…`) or a name, looked up across the user's chats, archived ones included:
+
+- an exact name wins, in any case (`mom` finds "Mom");
+- otherwise, the only partial match wins ("book" finds "Mom's book club");
+- no match exits 4 with `chat_not_found`;
+- several matches exit 4 with `ambiguous_chat` and `candidates`: the chats it could mean, each with its `id`. Run the command again with one of those IDs.
+
+Names are looked up among chat networks only. To find an email thread by its subject, add `--network email`.
+
+## Sending
+
+| Command | What it does |
+|---|---|
+| `chesly send <chat> [<text>] [--reply-to <msg_id>] [--file <path>] [--wait] [--idempotency-key <key>]` | Sends a message, from the user's own account, to a chat they already have. (Wave 2) |
+| `chesly send <chat> <text> --network <name>` | Looks the chat name up on that network first: `--network email` answers an email thread. (Wave 2) |
+
+- A `<text>` of `-` reads the text from standard input, which keeps quoting simple: `printf '%s' "$TEXT" | chesly send "Mom" - --json`.
+- Text that starts with `-` goes after `--`: `chesly send "Mom" --json -- "-5 degrees here"`.
+- `--reply-to <msg_id>` quotes one message of that chat: an `id` from `read`, `catchup` or `search`.
+- `--file <path>` attaches one file of at most 50 MB, and the text becomes its caption. Email takes text only.
+- The answer is the sent message, its `delivery.status` `queued`. `--wait` waits up to 30 seconds for `sent`, `delivered` or `failed`. A failed delivery exits 1 with `delivery_failed` and the reason in `delivery.error.message`. When `delivery.error.certain` is false, the message may have gone out anyway.
+- Every send carries an idempotency key, and the CLI's own retries reuse it, so one command sends at most once. To retry a command later without sending twice, give it the same `--idempotency-key <key>` (a UUID, say) each time.
+- Each connected account may send 60 messages an hour and 250 a day on WhatsApp, and 30 an hour and 150 a day on every other network, email included. Over a limit, the send exits 5 with `send_limit_reached` and `retry_after`.
+- Text limits, in UTF-16 code units: Instagram 1,000; Discord 2,000; Telegram 4,096; email 100,000; every other network 10,000. Longer text is refused with `text_too_long`.
+- Also refused: a message request (`message_request`), a chat Chesly can't send to (`unsupported_chat`), a `--reply-to` from another chat (`invalid_reply_to`), and any send with a read-only key (`insufficient_scope`).
+- An email reply goes to everyone on the message it answers (by default the newest one from someone else), with "Re:" and the thread's subject.
+
+## Watching
+
+| Command | What it does |
+|---|---|
+| `chesly watch [--chat <chat>] [--account <acct_id>] [--types <a,b>] [--networks <a,b>] [--after <evt_id>]` | Streams the user's events as they happen, one JSON object a line, until stopped. (Wave 2) |
+
+- Each line is an event: `id` (`evt_…`), `type`, `timestamp` and `data`.
+- The types: `message.received`, `message.sent` (the user's own, from any device), `message.edited`, `message.deleted`, `message.delivery_failed`, `chat.created`, `chat.updated`, `chat.read`, `account.connected`, `account.disconnected`, `account.needs_attention`, `reaction.added` and `reaction.removed`.
+- For `message.received`, `message.sent` and `message.edited`, `data` holds `message` and `chat` (`id`, `name`, `network`, `type`).
+- Without `--after`, the stream starts with new events. It reconnects by itself after a drop and resumes after the last event it printed. To resume after a restart, pass `--after` with the last `id` you handled. Events are kept 4 days.
+- The same event can arrive twice: skip an `id` you have seen.
+- Email events come only when `--networks` names `email`.
+- At most 5 streams can be open at once; a sixth exits 5 with `too_many_streams`.
+
+## Webhooks
+
+| Command | What it does |
+|---|---|
+| `chesly webhooks list` | The user's webhooks, without their secrets. (Wave 2) |
+| `chesly webhooks create <url> [--types <a,b>] [--networks <a,b>] [--payload <full or ids>] [--description <text>]` | Adds a webhook for an `https://` URL. Its signing secret (`whsec_…`) is printed this once. (Wave 2) |
+| `chesly webhooks delete <id>` | Deletes a webhook (`wh_…`). (Wave 2) |
+| `chesly webhooks rotate <id>` | Replaces its secret; the old one keeps signing for 24 hours. (Wave 2) |
+| `chesly webhooks test <id>` | Sends it a test event now. (Wave 2) |
+| `chesly webhooks deliveries <id> [--status <status>] [--limit <n>] [--cursor <cursor>]` | Its recent deliveries: each one's status (`pending`, `succeeded`, `failed` or `discarded`), attempts and the endpoint's answer. (Wave 2) |
+
+Without `--networks`, a webhook gets every network but email. The `chesly-api` skill covers receiving and verifying webhooks.
+
+## Keys and usage
+
+| Command | What it does |
+|---|---|
+| `chesly keys list` | The user's active API keys: `id`, `name`, `scope`, `prefix`, `last4`, `created_at` and `last_used_at`. (Wave 2) |
+| `chesly keys revoke <key_id>` | Revokes a key. Its next request is refused. (Wave 2) |
+| `chesly usage` | The plan, this period's calls and estimated cost, and how many messages each account can still send. (Wave 2) |
+
+New keys come from `chesly login`, or from https://web.chesly.app/api/keys.
+
+## Network names
+
+`--network` and `--networks` take the API's names: `whatsapp`, `imessage`, `instagram`, `messenger`, `telegram`, `signal`, `discord`, `slack`, `linkedin`, `twitter` (X), `gmessages` (Google Messages), `googlechat` (Google Chat), `reddit` and `email`.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | ok |
+| `1` | An error. Its JSON on standard error says which (`code`). |
+| `2` | A usage error: a missing argument or an unknown option. |
+| `3` | Not signed in: no key, a malformed one, or a key the API refused. Sign in again. |
+| `4` | Not found (`chat_not_found` and others), or a chat name that matches several chats (`ambiguous_chat`, with `candidates`). |
+| `5` | Retry later: a rate limit, or (Wave 2) Chesly briefly unavailable. Wait the error's `retry_after` seconds, then run it again. |
+| `6` | Payment required (402): no API plan, or a plan limit reached. The user starts the plan, or raises its limit, at https://web.chesly.app/api/billing. (Wave 2) |
+
+## Errors
+
+In JSON mode, an error is one line on standard error, as problem details:
+
+```json
+{"type":"https://agents.chesly.app/docs/errors#rate_limited","title":"Too many requests.","status":429,"detail":"This API key made more than 600 requests in one minute. Retry in 4 s.","code":"rate_limited","request_id":"571d003e-ad60-4a08-858a-b7b5353f39db","retry_after":4}
+```
+
+Branch on `code`. The CLI's own errors carry `type`, `title` and `code`, plus fields of their own, such as `candidates`. https://agents.chesly.app/docs/errors lists every code.
+
+## Environment
+
+| Variable | Use |
+|---|---|
+| `CHESLY_API_KEY` | The key to use instead of the stored one |
+| `CHESLY_API_URL` | The API's base URL (default `https://api.chesly.app`) |
