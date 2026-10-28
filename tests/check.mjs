@@ -279,22 +279,56 @@ function headingSlugs(markdown) {
 // ---------------------------------------------------------------------------------------------
 
 /** Where a shell command starts: the beginning, a new line, a pipe or list, `(`, `{` or `$(`. */
-const COMMAND_START = /(?:^|\n|[|;&({`]|\$\()[ \t]*(?:[A-Z_][A-Z0-9_]*=\S*[ \t]+)*chesly(?=[\s)`]|$)/g;
+const COMMAND_START = /(^|\n|[|;&({`]|\$\()[ \t]*(?:[A-Z_][A-Z0-9_]*=\S*[ \t]+)*chesly(?=[\s)`]|$)/g;
+/** A heredoc's start, `<<'EOF'`: a quoted delimiter keeps the body as written, an unquoted one lets the shell expand it. */
+const HEREDOC = /^<<-?[ \t]*(?:'(?<single>[^'\n]+)'|"(?<double>[^"\n]+)"|(?<bare>[\w.-]+))/;
 
-/** The words of every `chesly …` command in a piece of shell, after `chesly`. */
+/**
+ * Every `chesly …` command in a piece of shell: its words after `chesly`; `stdin`, where a `-` reads
+ * the text from (`quoted heredoc`, `heredoc`, `file`, or null for a pipe or nothing); and `via`,
+ * what it follows (`$(` inside a command substitution, `|` in a pipe).
+ */
 function cheslyCommands(code) {
-  return [...code.matchAll(COMMAND_START)].map((match) => wordsFrom(code, match.index + match[0].length));
+  const shell = withoutHeredocBodies(code);
+  return [...shell.matchAll(COMMAND_START)].map((match) => ({
+    ...wordsFrom(shell, match.index + match[0].length),
+    via: match[1] === '' || match[1] === '\n' ? null : match[1],
+  }));
+}
+
+/** Shell with every heredoc's body left out: a message's text is never a command. */
+function withoutHeredocBodies(code) {
+  const lines = code.split('\n');
+  const kept = [];
+  for (let i = 0; i < lines.length; i++) {
+    kept.push(lines[i]);
+    const opener = lines[i].indexOf('<<');
+    const heredoc = opener === -1 ? null : HEREDOC.exec(lines[i].slice(opener));
+    if (heredoc === null) continue;
+    const { single, double, bare } = heredoc.groups;
+    while (i + 1 < lines.length && lines[i + 1].trim() !== (single ?? double ?? bare)) i++;
+    i++;
+  }
+  return kept.join('\n');
 }
 
 /**
  * The words of one command from `from` on, as the shell splits them: quotes join, a `<placeholder>`
- * is one word, a `\` line end continues the command, and `[ ]` (optional parts) are dropped.
+ * is one word, a `\` line end continues the command, and `[ ]` (optional parts) are dropped. A
+ * heredoc or a `< file` redirect sets `stdin` and adds no word.
  */
 function wordsFrom(code, from) {
   const words = [];
   let word = '';
   let quote = null;
   let depth = 0;
+  let stdin = null;
+  let redirected = false;
+  const endWord = () => {
+    if (word !== '' && redirected) redirected = false;
+    else if (word !== '') words.push(word);
+    word = '';
+  };
   for (let i = from; i < code.length; i++) {
     const ch = code[i];
     if (quote !== null) {
@@ -302,6 +336,14 @@ function wordsFrom(code, from) {
       else word += ch;
     } else if (ch === '"' || ch === "'") {
       quote = ch;
+    } else if (ch === '<' && code[i + 1] === '<') {
+      const heredoc = HEREDOC.exec(code.slice(i));
+      if (heredoc === null) break;
+      stdin = heredoc.groups.bare === undefined ? 'quoted heredoc' : 'heredoc';
+      i += heredoc[0].length - 1;
+    } else if (ch === '<' && /\s/.test(code[i + 1] ?? '')) {
+      stdin = 'file';
+      redirected = true;
     } else if (ch === '<') {
       const end = code.indexOf('>', i);
       if (end === -1) break;
@@ -321,14 +363,32 @@ function wordsFrom(code, from) {
     } else if (ch === '#' && word === '') {
       break;
     } else if (/\s/.test(ch)) {
-      if (word !== '') words.push(word);
-      word = '';
+      endWord();
     } else {
       word += ch;
     }
   }
-  if (word !== '') words.push(word);
-  return words.map((w) => w.replace(/^\[+|\]+$/g, '')).filter((w) => w !== '' && w !== '…' && w !== '...');
+  endWord();
+  return {
+    words: words.map((w) => w.replace(/^\[+|\]+$/g, '')).filter((w) => w !== '' && w !== '…' && w !== '...'),
+    stdin,
+  };
+}
+
+/** The options that take no value; every other option takes the word after it. */
+const SWITCHES = ['--json', '--help', '--version', '--no-wait', '--wait', '--no-browser', '--force', '--reveal', '--unread'];
+
+/** A command's positional arguments, after its name and subcommand: options and their values left out. */
+function positionals(words) {
+  const [name, ...rest] = words;
+  const args = CLI[name]?.subcommands === undefined ? rest : rest.slice(1);
+  const found = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--') return [...found, ...args.slice(i + 1)];
+    if (args[i] === '-' || !args[i].startsWith('-')) found.push(args[i]);
+    else if (!SWITCHES.includes(args[i].split('=')[0]) && !args[i].includes('=')) i++;
+  }
+  return found;
 }
 
 /** The options a command's words may use, with the wave of each, or null for an unknown command. */
@@ -364,7 +424,7 @@ function commandProblems(words) {
   return problems;
 }
 
-const problemsIn = (code) => cheslyCommands(code).flatMap(commandProblems);
+const problemsIn = (code) => cheslyCommands(code).flatMap(({ words }) => commandProblems(words));
 
 // ---------------------------------------------------------------------------------------------
 // Reading endpoints, tools, event types and API names out of Markdown
@@ -385,17 +445,45 @@ const ENDPOINT_WAVES = new Map(Object.entries(ENDPOINTS).map(([endpoint, wave]) 
 /** Every path an endpoint has, and the API's base. */
 const PATHS = new Set(['/v1', ...[...ENDPOINT_WAVES.keys()].map((endpoint) => endpoint.split(' ')[1])]);
 
-/** Each curl request to the API in a piece of shell, as [method, path]. */
+/** A piece of shell's commands one a line: `\` line ends joined, heredoc bodies left out. */
+const logicalLines = (code) => withoutHeredocBodies(code).replace(/\\\n/g, ' ').split('\n');
+
+/** Each curl request to the API in a piece of shell, as [method, path, the command line]. */
 function curlRequests(code) {
-  return code
-    .replace(/\\\n/g, ' ')
-    .split('\n')
+  return logicalLines(code)
     .filter((line) => /\bcurl\b/.test(line))
     .flatMap((line) => {
       const named = /(?:-X|--request) ([A-Z]+)/.exec(line)?.[1];
       const method = named ?? (/ (-d|--data[\w-]*|-F|--form|--json) /.test(line) ? 'POST' : 'GET');
-      return [...line.matchAll(API_URL_PATH)].map((match) => [method, match[1]]);
+      return [...line.matchAll(API_URL_PATH)].map((match) => [method, match[1], line]);
     });
+}
+
+/**
+ * How a piece of shell gives a send its text, where the shell could rewrite it (R74): as an argument,
+ * from a pipe or an unquoted heredoc, or in a curl body on the command line. The text reaches a send
+ * only through a quoted heredoc (`<<'EOF'`) or a file: inside double quotes, `$20` becomes `0`, and
+ * backticks or `$(…)` copied from a message run.
+ */
+function sendTextProblems(code) {
+  const problems = [];
+  for (const { words, stdin } of cheslyCommands(code)) {
+    if (words[0] !== 'send') continue;
+    const [, text] = positionals(words);
+    const command = `chesly ${words.join(' ')}`;
+    if (text !== undefined && text !== '-') problems.push(`${command}: the text is an argument; pass - and a quoted heredoc`);
+    else if (text === '-' && stdin !== 'quoted heredoc' && stdin !== 'file') {
+      problems.push(`${command}: - reads ${stdin ?? 'a pipe or nothing'}; give it a quoted heredoc (<<'EOF') or a file`);
+    }
+  }
+  for (const [method, path, line] of curlRequests(code)) {
+    if (endpointKey(method, path) !== 'POST /v1/chats/{}/messages') continue;
+    const body = /\s(?:-d|--data[\w-]*|--json) +(\S+)/.exec(line)?.[1];
+    const fromHeredoc = body === '@-' && /<<-?[ \t]*['"]/.test(line);
+    const fromFile = body !== undefined && body.startsWith('@') && body !== '@-';
+    if (!fromHeredoc && !fromFile) problems.push(`curl sends the text on its command line; send the body from a quoted heredoc (--data-binary @- <<'EOF') or a file`);
+  }
+  return problems;
 }
 
 /** What is wrong with the endpoints a Markdown text names: a path, method or request the API lacks. */
@@ -509,6 +597,25 @@ test('the_tool_name_and_event_checks_find_what_the_api_lacks', () => {
   ]);
 });
 
+test('the_send_check_reads_heredocs_files_and_pipes', () => {
+  const read = (code) => cheslyCommands(code).map(({ words, stdin, via }) => [words.join(' '), stdin, via]);
+  assert.deepEqual(read("chesly send chat_1 - --json <<'EOF'\nchesly is $20 `x`\nEOF\nchesly read chat_1 --json"), [
+    ['send chat_1 - --json', 'quoted heredoc', null],
+    ['read chat_1 --json', null, null],
+  ]);
+  assert.deepEqual(read('chesly send chat_1 - --json < reply.txt'), [['send chat_1 - --json', 'file', null]]);
+  assert.deepEqual(read('x --header "Bearer $(chesly key --reveal)"'), [['key --reveal', null, '$(']]);
+  assert.deepEqual(sendTextProblems("chesly send <chat_id> - --reply-to <msg_id> --wait --json <<'EOF'"), []);
+  assert.deepEqual(sendTextProblems('chesly send "Mom" - --json < reply.txt'), []);
+  assert.deepEqual(sendTextProblems('chesly send chat_1 --file report.pdf --wait --json'), [], 'a file alone has no text');
+  assert.deepEqual(sendTextProblems("curl https://api.chesly.app/v1/chats/chat_1/messages \\\n  --data-binary @- <<'EOF'\n{\"text\": \"hi\"}\nEOF"), []);
+  for (const code of ['chesly send "Mom" "On my way $20" --json', 'chesly send "Mom" --json -- "-5 degrees"',
+    'chesly send chat_1 - --json <<EOF\nhi\nEOF', 'printf "%s" "$TEXT" | chesly send chat_1 - --json',
+    `curl https://api.chesly.app/v1/chats/chat_1/messages -d '{"text": "hi"}'`]) {
+    assert.equal(sendTextProblems(code).length, 1, code);
+  }
+});
+
 test('the_section_and_slug_readers_follow_github', () => {
   const markdown = '# Title\n\n## Exit codes\ntext\n### Deeper\nmore\n## Next\n\n## `chesly send`\n## Exit codes\n';
   assert.equal(section(markdown, 'Exit codes'), '## Exit codes\ntext\n### Deeper\nmore');
@@ -561,7 +668,7 @@ test('every_chesly_command_and_option_exists', () => {
   const problems = [];
   for (const file of markdownFiles()) {
     for (const code of codeOf(read(file))) {
-      for (const words of cheslyCommands(code)) {
+      for (const { words } of cheslyCommands(code)) {
         for (const problem of commandProblems(words)) problems.push(`${file}: chesly ${words.join(' ')}: ${problem}`);
       }
     }
@@ -574,13 +681,27 @@ test('no_command_puts_a_key_on_the_command_line', () => {
   for (const file of markdownFiles()) {
     for (const code of codeOf(read(file))) {
       assert.doesNotMatch(code, /ck_live_[A-Za-z0-9_-]{4,}/, `${file}: a key in the text`);
-      for (const words of cheslyCommands(code)) {
+      for (const { words } of cheslyCommands(code)) {
         if (words[0] !== 'login') continue;
         assert.ok(!words.some((word) => word.startsWith('--key=')), `${file}: chesly ${words.join(' ')}`);
         const at = words.indexOf('--key');
         if (at !== -1) assert.equal(words[at + 1], '-', `${file}: chesly ${words.join(' ')} reads the key from stdin`);
       }
     }
+  }
+});
+
+test('every_send_reads_its_text_from_a_quoted_heredoc_or_a_file', () => {
+  const problems = markdownFiles().flatMap((file) =>
+    codeOf(read(file)).flatMap((code) => sendTextProblems(code).map((problem) => `${file}: ${problem}`)));
+  assert.deepEqual(problems, []);
+});
+
+test('every_skill_says_message_text_never_goes_through_the_shell', () => {
+  for (const skill of Object.keys(SKILLS)) {
+    const markdown = read(join('skills', skill, 'SKILL.md'));
+    assert.match(parseMarkdown(markdown).prose, /Message text never goes through the shell/, skill);
+    assert.ok(parseMarkdown(markdown).blocks.some((block) => /<<'EOF'\n[\s\S]*\n[ \t]*EOF[ \t]*\n?$/.test(block)), `${skill} shows a quoted heredoc`);
   }
 });
 
@@ -649,7 +770,7 @@ test('every_skill_shows_the_text_and_waits_for_ok_before_sending', () => {
 test('every_command_the_chesly_skill_runs_passes_json', () => {
   for (const file of [join('skills', 'chesly', 'SKILL.md'), join('skills', 'chesly', 'references', 'recipes.md')]) {
     for (const code of codeOf(read(file))) {
-      for (const words of cheslyCommands(code)) {
+      for (const { words } of cheslyCommands(code)) {
         if (words.length === 0 || words[0].startsWith('-') || (words[0] === 'key' && words.includes('--reveal'))) continue;
         assert.ok(words.includes('--json'), `${file}: chesly ${words.join(' ')} needs --json`);
       }
@@ -660,7 +781,7 @@ test('every_command_the_chesly_skill_runs_passes_json', () => {
 test('the_command_reference_covers_every_command_and_option', () => {
   const seen = new Set();
   for (const code of codeOf(read(join('skills', 'chesly', 'references', 'commands.md')))) {
-    for (const words of cheslyCommands(code)) {
+    for (const { words } of cheslyCommands(code)) {
       const [name, sub] = words;
       const command = CLI[name] === undefined || CLI[name].subcommands?.[sub] === undefined ? name : `${name} ${sub}`;
       seen.add(command);
@@ -681,7 +802,7 @@ test('the_command_reference_marks_what_wave_2_adds', () => {
   assert.ok(rows.length > 0, 'the commands are in a table');
   for (const row of rows) {
     const [, cell] = row.split('|');
-    const commands = codeOf(cell).flatMap(cheslyCommands);
+    const commands = codeOf(cell).flatMap(cheslyCommands).map(({ words }) => words);
     const wave2 = commands.some((words) => {
       const options = optionsOf(words) ?? {};
       return CLI[words[0]]?.wave === 2 || words.some((word) => options[word.split('=')[0]] === 2);

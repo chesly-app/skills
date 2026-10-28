@@ -71,11 +71,18 @@ Names are looked up among chat networks only. To find an email thread by its sub
 
 | Command | What it does |
 |---|---|
-| `chesly send <chat> [<text>] [--reply-to <msg_id>] [--file <path>] [--wait] [--idempotency-key <key>]` | Sends a message, from the user's own account, to a chat they already have. (Wave 2) |
-| `chesly send <chat> <text> --network <name>` | Looks the chat name up on that network first: `--network email` answers an email thread. (Wave 2) |
+| `chesly send <chat> - [--reply-to <msg_id>] [--file <path>] [--wait] [--idempotency-key <key>] <<'EOF'` | Sends a message, from the user's own account, to a chat they already have, with the text from the heredoc that follows. (Wave 2) |
+| `chesly send <chat> - --network <name> <<'EOF'` | Looks the chat name up on that network first: `--network email` answers an email thread. (Wave 2) |
 
-- A `<text>` of `-` reads the text from standard input, which keeps quoting simple: `printf '%s' "$TEXT" | chesly send "Mom" - --json`.
-- Text that starts with `-` goes after `--`: `chesly send "Mom" --json -- "-5 degrees here"`.
+- The text comes on standard input, never as an argument: pass `-`, then a quoted heredoc (`<<'EOF'`, the text, then a line `EOF`) or a file (`< reply.txt`). A quoted heredoc keeps the text exactly as written. Inside double quotes on the command line, or typed into a variable, the shell rewrites it: `$20` becomes `0`, and backticks or `$(…)` copied from a message run. If a line of the text is exactly `EOF`, pick another delimiter.
+
+  ```bash
+  chesly send chat_7Hq2mR9xLp4vT1sK8nWz - --wait --json <<'EOF'
+  Paid the $20, thanks! `Invoice 42` is settled.
+  EOF
+  ```
+
+- A file alone needs no text: `chesly send <chat_id> --file <path> --wait --json`.
 - `--reply-to <msg_id>` quotes one message of that chat: an `id` from `read`, `catchup` or `search`.
 - `--file <path>` attaches one file of at most 50 MB, and the text becomes its caption. Email takes text only.
 - The answer is the sent message, its `delivery.status` `queued`. `--wait` waits up to 30 seconds for `sent`, `delivered` or `failed`. A failed delivery exits 1, with the reason in `delivery.error.message`. When `delivery.error.certain` is false, the message may have gone out anyway.

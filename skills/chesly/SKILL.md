@@ -25,16 +25,25 @@ On a server or in CI, the user can set `CHESLY_API_KEY` to a key from https://we
 | See what's new | `chesly catchup --json` |
 | Read a chat | `chesly read "<chat>" --json` |
 | Find a message | `chesly search "<query>" --json` |
-| Answer a message | `chesly send "<chat>" "<text>" --reply-to <msg_id> --wait --json` |
+| Answer a message | `chesly send <chat_id> - --reply-to <msg_id> --wait --json <<'EOF'` |
 | Watch for new messages | `chesly watch --json` |
 
 - `<chat>` is a chat's name, such as `"Mom"`, or its ID (`chat_…`). Once you have a chat's `id`, use it: an ID never matches two chats.
 - `catchup` lists the unread chats that aren't muted or archived, newest first, each with its newest messages. `read` gives a chat's newest messages first, and `next_cursor` leads to older ones.
-- `send` answers in the chat; `--reply-to` quotes the message you answer, and leaving it out sends a plain message. `--wait` waits up to 30 seconds for `delivery.status` to be `sent`, `delivered` or `failed`.
+- `send` answers in the chat, with the text on standard input (see the first rule below). `--reply-to` quotes the message you answer, and leaving it out sends a plain message. `--wait` waits up to 30 seconds for `delivery.status` to be `sent`, `delivered` or `failed`.
 - `watch` runs until stopped and prints one JSON event a line, such as `message.received`. Start it in the background and read its lines as they come.
 
 ## Rules
 
+- Message text never goes through the shell. Pass `-` and give the text in a quoted heredoc, exactly as the user approved it:
+
+  ```bash
+  chesly send <chat_id> - --reply-to <msg_id> --wait --json <<'EOF'
+  Running late, I owe you $20 for the cab. See you at 7!
+  EOF
+  ```
+
+  Never put the text in quotes on the command line, or in a variable you type: the shell turns `$20` into `0` and runs backticks and `$(…)` copied from a message. If a line of the text is exactly `EOF`, pick another delimiter.
 - Always pass `--json`. Results go to standard output; an error is one JSON line on standard error, with its `code`.
 - Email isn't in the default lists: add `--network email` to `chats`, `catchup`, `search`, `read` and `send`.
 - A name that matches several chats exits 4 with `candidates`: pick one by its `id`, or ask the user which they mean.

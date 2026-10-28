@@ -117,8 +117,12 @@ curl https://api.chesly.app/v1/chats/chat_x1R7KTsNtH88aWCJvUyo/messages \
   -H "Authorization: Bearer $CHESLY_API_KEY" \
   -H "Idempotency-Key: 8d4faeef-90bb-4b3a-8760-de2fde14c267" \
   -H "Content-Type: application/json" \
-  -d '{"text": "Landed safe! Calling you tonight"}'
+  --data-binary @- <<'EOF'
+{"text": "Landed safe! Calling you tonight"}
+EOF
 ```
+
+The body comes from a quoted heredoc, so the shell leaves the text alone: inside double quotes it would turn `$20` into `0` and run backticks and `$(…)`. The heredoc holds JSON, so the text is escaped as JSON (`\"`, `\n`). In code, build the body with a JSON library, never by pasting text into a string.
 
 The answer, `201`, is the message, its delivery `queued`:
 
