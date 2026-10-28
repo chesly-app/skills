@@ -19,13 +19,13 @@ The URL is `https://api.chesly.app/mcp`, over Streamable HTTP. It takes the user
 | `search_messages` | any | `query` (at most 200 characters), `chat_id`, `limit` (1 to 20, default 10), and `network` (Wave 2) | Messages that match, in every chat or one, each naming its chat and network. |
 | `get_message` | any | `message_id` | One message, with its delivery status (Wave 2). |
 | `mark_read` | full | `chat_id` | Marks a chat read, as the apps do; the network gets a read receipt unless the user keeps receipts private. |
-| `send_message` | full | `chat_id`, `text`, `reply_to`, `media_id`, `idempotency_key` | Sends a message, as the user, to one of their chats. (Wave 2) |
+| `send_message` | full | `chat_id`, `text`, `reply_to` (a message of the same chat), `media_id`, `idempotency_key` | Sends a message, as the user, to one of their chats. (Wave 2) |
 | `find_contact` | any | `query` (1 to 100 characters), `limit` (at most 20, default 10) | Finds the people of the user's direct chats by name, on every network, each with their direct chat. (Wave 2) |
 | `transcribe_voice_note` | full | `message_id` | Turns a voice note into text, at $0.02 a minute of audio. (Wave 2) |
 
 - A read-only key sees 7 tools (Wave 2): not `send_message`, `mark_read` or `transcribe_voice_note`.
 - `network` is one network's name, such as `whatsapp`. Email stays out of `list_chats`, `catch_up` and `search_messages` unless `network` is `email`; an email chat or message is always reachable by its ID.
-- `send_message` follows the REST API's rules: only chats the user has, no message requests, the send limits, and at most once per `idempotency_key`. Pass one, and reuse it if you call again after an unclear failure.
+- `send_message` follows the REST API's rules: only chats the user has, no message requests, a `reply_to` from that chat (else `invalid_reply_to`), the send limits, and at most once per `idempotency_key`. Pass one, and reuse it if you call again after an unclear failure.
 - A file for `send_message` comes from `POST /v1/media`; the MCP server has no upload tool.
 
 ## How the tools answer

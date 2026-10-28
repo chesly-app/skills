@@ -43,9 +43,9 @@ curl https://api.chesly.app/v1/me -H "Authorization: Bearer $CHESLY_API_KEY"
 | `POST /v1/chats/{chat_id}/read` | Marks a chat read, as the apps do, and answers `{ read: true, receipt_sent }`. A message request is marked read with no receipt. |
 | `GET /v1/messages/{message_id}` | One message, with its `delivery` when it was sent through the API. (Wave 2) |
 | `GET /v1/messages/search` | Messages that match `q` (at most 200 characters), newest first: `chat_id`, `account_id`, `limit` (1 to 100, default 20). Each hit is a message plus `chat_name` and `network`. |
-| `GET /v1/messages` | Everything new across the chats since `since`, a page at a time: `limit` (1 to 200, default 100), `cursor`. It answers `messages`, `next_cursor` and `until`; the next walk starts at `since=<until>`. |
+| `GET /v1/messages` | Everything new across the chats since `since`, a page at a time: `limit` (1 to 200, default 100), `cursor`. It answers `messages`, `next_cursor` and `until`; the next walk starts at `since=<until>`. Email reaches it up to 10 seconds after it arrives. |
 | `GET /v1/catch_up` | The unread chats that aren't muted or archived, each with its newest messages, in one call: `chats` (1 to 50, default 20), `per_chat` (1 to 20, default 5). |
-| `GET /v1/media/{media_id}` | The bytes of a message's media (`media.id`), up to 50 MB. |
+| `GET /v1/media/{media_id}` | The bytes of a message's media (`media.id`). |
 | `POST /v1/chats/{chat_id}/messages` | Sends a message. See [Sending](#sending-wave-2). (Wave 2) |
 | `POST /v1/media` | Uploads a file to send. See [Files](#files-wave-2). (Wave 2) |
 | `GET /v1/contacts` | The people of the user's direct chats, by name. (Wave 2) |
@@ -68,7 +68,7 @@ A chat has `id`, `account_id`, `network`, `name`, `type` (`dm` or `group`), `unr
 ## Filters, networks and email (Wave 2)
 
 - `network` keeps `GET /v1/chats`, `GET /v1/catch_up`, `GET /v1/messages?since=` and `GET /v1/messages/search` to one network. The names: `whatsapp`, `imessage`, `instagram`, `messenger`, `telegram`, `signal`, `discord`, `slack`, `linkedin`, `twitter` (X), `gmessages` (Google Messages), `googlechat` (Google Chat), `reddit` and `email`.
-- Email is opt-in: those lists leave it out unless `network=email`, or `account_id` names an email account. An email chat or message is always reachable by its ID. An email thread's `name` is its subject, and an email message also has `email` (`subject`, `from`, `to`, `cc`).
+- Email is opt-in: those lists leave it out unless `network=email`, or `account_id` names an email account. An email chat or message is always reachable by its ID. An email read answers `409` `account_reconnect_required` when its account needs the user to reconnect it in the Chesly app. Don't retry. An email thread's `name` is its subject, and an email message also has `email` (`subject`, `from`, `to`, `cc`).
 - `updated_since` on `GET /v1/chats` keeps the chats whose `last_message_at` is at or after it.
 - `before` and `after` on `GET /v1/chats/{chat_id}/messages` keep the messages sent before or after those times, still newest first.
 - Times are ISO 8601 with an offset, such as `2026-10-27T09:30:00Z`.
@@ -143,7 +143,8 @@ The answer, `201`, is the message, its delivery `queued`:
 }
 ```
 
-- `delivery.status` moves on to `sent` and `delivered`, or to `failed` with `delivery.error`: a `code` (`network_rejected`, `not_logged_in`, `rate_limited_by_network`, `unsupported`, `timeout` or `unknown`), a `message`, and `certain`. When `certain` is false, the message may have gone out anyway: check the chat before you send it again.
+- `delivery.status` moves on to `sent`, which is success: most networks stop at `sent`, and `delivered` comes only where the network reports it. Or it moves to `failed`, with `delivery.error`: a `code`, a `message`, and `certain`.
+- `network_rejected`, `not_logged_in`, `rate_limited_by_network` and `unsupported` are certain and final. `timeout` and `unknown` are uncertain: the message may have been delivered, so don't resend. Read the chat, or wait for a second `message.delivery_failed` with `certain: true`, after which a resend is safe.
 - `GET /v1/messages/{message_id}` shows where a message is, and a failure is also a `message.delivery_failed` event. Messages sent through the API in the last 30 days carry `delivery`; every other message has `delivery: null`.
 - Text limits, in UTF-16 code units: Instagram 1,000; Discord 2,000; Telegram 4,096; email 100,000; every other network 10,000. Longer is `400` `text_too_long`, and a NUL character is `400` `invalid_request`.
 - Refused: a message request (`409` `message_request`), a chat Chesly can't send to (`400` `unsupported_chat`), a `reply_to` from another chat (`400` `invalid_reply_to`), a send over the limit (`429` `send_limit_reached`), and any send while Chesly pauses a network (`503` `network_unavailable`).
@@ -157,7 +158,7 @@ curl https://api.chesly.app/v1/media \
   -F "file=@report.pdf"
 ```
 
-The answer, `201`, is `{ "id": "media_…", "mime_type": "application/pdf", "size": 48213, "file_name": "report.pdf" }`. Send it as `media_id`, with any `text` as its caption. One file a message, at most 50 MB (`400` `media_too_large`).
+The answer, `201`, is `{ "id": "media_…", "mime_type": "application/pdf", "size": 48213, "file_name": "report.pdf" }`. Send it as `media_id`, with any `text` as its caption. One file a message, of at most 50 MB (50,000,000 bytes); a bigger one is `400` `media_too_large`.
 
 ## Contacts and transcripts (Wave 2)
 
@@ -174,7 +175,7 @@ The answer, `201`, is `{ "id": "media_…", "mime_type": "application/pdf", "siz
 | Searches, catch-ups | 30 a minute each, per user |
 | Sends on WhatsApp | 60 an hour and 250 a day, per account |
 | Sends on every other network, email included | 30 an hour and 150 a day, per account |
-| Files | One per message, up to 50 MB |
+| Files | One per message, up to 50 MB (50,000,000 bytes) |
 | Live streams | 5 open at once |
 | Webhooks | 10 |
 | Keys | 25 |

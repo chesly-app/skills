@@ -54,6 +54,8 @@ A chat has `id`, `account_id`, `network`, `name`, `type` (`dm` or `group`), `unr
 
 A message has `id` (`msg_…`), `chat_id`, `sender` (`name`, `is_me`), `text`, `truncated`, `type` (`text`, `image`, `video`, `audio`, `file` or `other`), `media`, `sent_at`, `edited`, `deleted`, `reply_to` and `delivery`. Text is cut at 4,000 characters, and `truncated` says so. An email message also has `email` (`subject`, `from`, `to`, `cc`).
 
+An email read can answer `account_reconnect_required`: the user reconnects that account in the Chesly app. Don't retry.
+
 When there is more, the JSON has a `next_cursor`, and the same command with `--cursor <next_cursor>` gets the next page (older messages, for `read`).
 
 ## Chat names
@@ -84,9 +86,9 @@ Names are looked up among chat networks only. To find an email thread by its sub
 
 - A file alone needs no text: `chesly send <chat_id> --file <path> --wait --json`.
 - `--reply-to <msg_id>` quotes one message of that chat: an `id` from `read`, `catchup` or `search`.
-- `--file <path>` attaches one file of at most 50 MB, and the text becomes its caption. A file that can't be read fails with `file_unreadable` before anything is sent. Email takes text only.
+- `--file <path>` attaches one file of at most 50 MB (50,000,000 bytes), and the text becomes its caption. A file that can't be read fails with `file_unreadable` before anything is sent. Email takes text only.
 - `--media-id <media_id>` attaches a file uploaded before, instead of `--file`: it is how a file send that gave up is retried.
-- The answer is the sent message, its `delivery.status` `queued`. `--wait` asks once a second, within 30 seconds in all, until it is `sent`, `delivered` or `failed`; each ask is a metered call. A failed delivery exits 1 with `delivery_failed`, the reason in `delivery.error.message`; when `delivery.error.certain` is false, the message may have gone out anyway. Once the message went out, it is always printed and the exit is 0, even when following it fails: that is a `delivery_wait_failed` warning, with the `idempotency_key` that asks the API for its answer again.
+- The answer is the sent message, its `delivery.status` `queued`. `--wait` asks once a second, within 30 seconds in all, until it is `sent` (success: most networks stop there), `delivered` (only where the network reports it) or `failed`; each ask is a metered call. A failed delivery exits 1 with `delivery_failed`, the reason in `delivery.error.message`; when `delivery.error.certain` is false, the message may have been delivered, so don't resend until a later `message.delivery_failed` with `certain: true` says it wasn't. Once the message went out, it is always printed and the exit is 0, even when following it fails: that is a `delivery_wait_failed` warning, with the `idempotency_key` that asks the API for its answer again.
 - Every send carries an `Idempotency-Key`, and the CLI's own retries (after a network error, a 502, 503 or 504, or while a first attempt still runs: 3 tries) reuse it, so one command sends at most once. When it gives up without knowing whether the message went out, the error carries the key as `idempotency_key`: run the same command again, with the same text and `--idempotency-key <that key>`, and the API answers with the first attempt's result instead of sending again. A file send's error also carries its upload as `media_id`: retry with `--media-id <media_id> --idempotency-key <key>`, without `--file`, since a new upload would be another media ID, which the same key refuses (`422` `idempotency_key_reused`).
 - Each connected account may send 60 messages an hour and 250 a day on WhatsApp, and 30 an hour and 150 a day on every other network, email included. Over a limit, the send exits 5 with `send_limit_reached` and `retry_after`.
 - Text limits, in UTF-16 code units: Instagram 1,000; Discord 2,000; Telegram 4,096; email 100,000; every other network 10,000. Longer text is refused with `text_too_long`.
@@ -102,7 +104,7 @@ Names are looked up among chat networks only. To find an email thread by its sub
 - Each line is an event: `id` (`evt_…`), `type`, `timestamp` and `data`.
 - The types: `message.received`, `message.sent` (the user's own, from any device), `message.edited`, `message.deleted`, `message.delivery_failed`, `chat.created`, `chat.updated`, `chat.read`, `account.connected`, `account.disconnected`, `account.needs_attention`, `reaction.added` and `reaction.removed`.
 - For `message.received`, `message.sent` and `message.edited`, `data` holds `message` and `chat` (`id`, `name`, `network`, `type`).
-- Without `--after`, the stream starts with new events. It reconnects by itself after a drop and resumes after the last event it printed. To resume after a restart, pass `--after` with the last `id` you handled. Events are kept 4 days: an older resume point starts again from new events, with a warning.
+- Without `--after`, the stream starts with new events. It reconnects by itself after a drop and resumes after the last event it printed. To resume after a restart, pass `--after` with the last `id` you handled. Events are kept 4 days: an older resume point gets `410` `events_expired`, and `chesly watch` starts again from now, with an `events_expired` warning.
 - The same event can arrive twice: skip an `id` you have seen.
 - Email events come only when `--networks` names `email`.
 - At most 5 streams can be open at once; a sixth exits 5 with `too_many_streams`.

@@ -1054,3 +1054,58 @@ test('the_readme_gives_the_install_lines', () => {
     assert.ok(lines.includes(line), `the README shows ${line}`);
   }
 });
+
+// ---------------------------------------------------------------------------------------------
+// What the Wave 2 reviews settled (R96-R101)
+// ---------------------------------------------------------------------------------------------
+
+const skillMd = (skill) => read(join('skills', skill, 'SKILL.md'));
+const UNCERTAIN_FAILURES = ['timeout', 'unknown'];
+const CERTAIN_FAILURES = ['network_rejected', 'not_logged_in', 'rate_limited_by_network', 'unsupported'];
+
+test('the_skills_say_when_a_failed_send_may_be_resent', () => {
+  // R96, R98: an uncertain failure may have been delivered; only a later certain one makes a resend safe.
+  for (const text of [skillMd('chesly'), skillMd('chesly-api'), apiReference('rest.md')]) {
+    const { inline } = parseMarkdown(text);
+    assert.deepEqual([...UNCERTAIN_FAILURES, ...CERTAIN_FAILURES].filter((code) => !inline.includes(code)), []);
+    assert.match(text, /may have been delivered[^.]*don't resend/i);
+    assert.match(text, /`certain: true`[^.]*resend is safe/);
+    assert.match(text, /are (?:certain and )?final/);
+  }
+});
+
+test('sent_is_success_and_delivered_only_where_reported', () => {
+  for (const text of [skillMd('chesly'), skillMd('chesly-api'), apiReference('rest.md')]) {
+    assert.match(text, /most networks stop at `sent`/);
+    assert.match(text, /`delivered`[^.]*only where the network reports it/);
+  }
+});
+
+test('every_file_cap_is_50_000_000_bytes', () => {
+  // R97: the homeserver's cap. A "50 MB" that isn't spelled out in bytes is another number.
+  for (const file of copyFiles()) {
+    for (const [mention] of read(file).matchAll(/50 MB(?! \(50,000,000 bytes\))/g)) assert.fail(`${file}: ${mention} without its bytes`);
+  }
+  assert.match(apiReference('rest.md'), /50 MB \(50,000,000 bytes\)/);
+  assert.match(read(join('skills', 'chesly', 'references', 'commands.md')), /50 MB \(50,000,000 bytes\)/);
+});
+
+test('an_email_account_to_reconnect_is_never_retried', () => {
+  // R101: a 409 account_reconnect_required needs the user, in the Chesly app.
+  for (const text of [skillMd('chesly'), skillMd('chesly-api'), apiReference('rest.md')]) {
+    assert.match(text, /`account_reconnect_required`[^\n]*reconnect[^\n]*in the Chesly app[^\n]*[Dd]on't retry/);
+  }
+});
+
+test('the_event_and_feed_timing_is_stated', () => {
+  assert.match(apiReference('events-and-webhooks.md'), /`events_expired`[^\n]*from now/);
+  assert.match(read(join('skills', 'chesly', 'references', 'commands.md')), /`events_expired`[^\n]*from now/);
+  assert.match(apiReference('rest.md'), /[Ee]mail reaches it up to 10 seconds after it arrives/);
+});
+
+test('reply_to_is_a_message_of_the_same_chat', () => {
+  for (const text of [read(join('skills', 'chesly', 'references', 'commands.md')), apiReference('rest.md'), apiReference('mcp.md')]) {
+    assert.ok(parseMarkdown(text).inline.includes('invalid_reply_to'), 'names invalid_reply_to');
+    assert.match(text, /same chat|that chat/);
+  }
+});

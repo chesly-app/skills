@@ -53,7 +53,7 @@ None of them count as calls, and any key, read-only included, can read them. Cre
 | `message.sent` | The user sends a message, from any device or the API | The same |
 | `message.edited` | A message is edited | The same, with the text after the edit |
 | `message.deleted` | A message is deleted | `message_id`, `chat_id` |
-| `message.delivery_failed` | A message sent through the API didn't go through | `message_id`, `chat_id`, and `error` (`code`, `message`, `certain`) |
+| `message.delivery_failed` | A message sent through the API failed. With `certain: false` it may have been delivered; a later one with `certain: true` means it wasn't | `message_id`, `chat_id`, and `error` (`code`, `message`, `certain`) |
 | `chat.created` | The user joins a new chat | `chat` |
 | `chat.updated` | A chat is renamed, archived, pinned, muted or left | `chat_id`, `chat` (null once left), and `changes` (`name`, `archived`, `pinned`, `muted`, `left`) |
 | `chat.read` | The user reads a chat, on any device | `chat_id`, `last_read_message_id` |
@@ -87,7 +87,7 @@ curl -N https://api.chesly.app/v1/events/stream \
 
 - Server-sent events: the answer starts with `retry: 3000`, then each event is an `id:` line (`evt_…`), an `event:` line (its type) and a `data:` line (the event's JSON), then a blank line. A `: ping` comment comes every 15 seconds.
 - Without `Last-Event-ID` (or `?after=`), it sends new events only. To resume after a drop, reconnect with `Last-Event-ID` set to the last `id` you handled: you get every event after it, once, in order.
-- It takes the feed's filters, and an unknown or expired `Last-Event-ID` is `410` `events_expired` before the stream starts.
+- It takes the feed's filters, and an unknown or expired `Last-Event-ID` is `410` `events_expired` before the stream starts: reconnect without it, and watching restarts from now. `chesly watch` does this itself.
 - A user can keep 5 streams open; a sixth is `429` `too_many_streams`.
 - `chesly watch` reads this stream.
 

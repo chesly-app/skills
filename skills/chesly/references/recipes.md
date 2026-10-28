@@ -22,7 +22,7 @@ Each recipe runs the CLI with `--json` and reads its JSON. Before any send, show
    EOF
    ```
 
-5. Read `delivery.status`: `sent` or `delivered` means done. On `failed`, tell the user `delivery.error.message`.
+5. Read `delivery.status`: `sent` means done (`delivered` appears only where the network reports it). On `failed`, tell the user `delivery.error.message`; if `delivery.error.certain` is false, it may have been delivered, so don't resend.
 
 ## Find who I owe a reply
 
@@ -34,7 +34,7 @@ Each `read` is one API call, so 30 chats cost 30 calls. Include groups only when
 
 ## Catch up on email
 
-1. Run `chesly catchup --network email --json`: the unread email threads, each with its newest messages. A thread's `name` is its subject, and each message carries `email.from`, `email.to` and `email.cc`.
+1. Run `chesly catchup --network email --json`: the unread email threads, each with its newest messages. A thread's `name` is its subject, and each message carries `email.from`, `email.to` and `email.cc`. If it answers `account_reconnect_required`, ask the user to reconnect that email account in the Chesly app.
 2. To answer a thread, show the user the text and wait for their OK, then send it. The reply goes to everyone on the newest message from someone else, with "Re:" and the subject. Email takes text only.
 
    ```bash
