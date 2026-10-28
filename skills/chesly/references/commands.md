@@ -24,7 +24,7 @@ Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2.
 |---|---|
 | `chesly login --no-wait` | Starts a sign-in and exits 0 at once. It prints `{"status":"pending","verification_uri_complete":"…","user_code":"…","expires_in":600}` on standard output, and opens the browser on the link where one can show. (Wave 2) |
 | `chesly login --wait` | Finishes that sign-in: waits until the user approves the code, stores the key, and prints `{"status":"signed_in",…}`. Cut short (Ctrl+C, a tool's time limit), it can run again. (Wave 2) |
-| `chesly login` | Both steps in one, for a person at a terminal: prints the link and the code, opens the browser, and waits for the approval. |
+| `chesly login` | Both steps in one, for a person at a terminal: prints the link and the code, opens the browser where it can, and waits for the approval. |
 | `chesly login --no-browser` | Signs in without opening a browser, to approve on another device. (Wave 2) |
 | `chesly login --force` | Signs in with a new key even though the stored one still works. Without it, `chesly login` says "Already signed in" (`already_signed_in`) and makes no new key. (Wave 2) |
 | `chesly login --key -` | Reads a key the user already has from standard input, checks it, then stores it. (Wave 2) |
@@ -138,7 +138,7 @@ New keys come from `chesly login`, or from https://web.chesly.app/api/keys. `key
 | 5 | temporary, retry later: rate limited (a 429: too many requests, a send cap, or too many open event streams) or briefly unavailable (a 503). `retry_after` says when, if the answer has it |
 | 6 | payment required: the account needs an API plan, or a limit of its plan is reached |
 
-A `400` `invalid_request` also exits 2, as a usage error. A send whose first attempt still runs after the CLI's retries (`409` `idempotency_in_progress`) exits 5. Those two, exit 5 for a 503, and exit 6 arrive with Wave 2. On exit 6, the user starts the plan, or raises its limit, at https://web.chesly.app/api/billing.
+A `400` `invalid_request` also exits 2, as a usage error. A send whose first attempt still runs after the CLI's retries (`409` `idempotency_in_progress`) exits 5, and its error carries the `idempotency_key` to retry with. Those two, exit 5 for a 503, and exit 6 arrive with Wave 2. On exit 6, the user starts the plan, or raises its limit, at https://web.chesly.app/api/billing.
 
 ## Errors
 

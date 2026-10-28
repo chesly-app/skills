@@ -36,7 +36,7 @@ curl https://api.chesly.app/v1/catch_up -H "Authorization: Bearer $CHESLY_API_KE
 - Sends go out from the user's real accounts, and only to chats they already have: a `chat_id` from their own list. Nothing starts a conversation or takes a phone number, handle or address.
 - A send has no side effects beyond the message: no typing, no presence, no read receipt.
 - Message requests can be read, never answered: a send to one is `409` `message_request`.
-- Each connected account may send 60 messages an hour and 250 a day on WhatsApp, and 30 an hour and 150 a day on every other network, email included. Over that, `429` `send_limit_reached` with `Retry-After`. Messages leave through shared servers, where one script's burst can get a network to flag them, and automation can get a LinkedIn account restricted: the limits keep both from happening.
+- Each connected account may send 60 messages an hour and 250 a day on WhatsApp, and 30 an hour and 150 a day on every other network, email included. Over that, `429` `send_limit_reached` with `Retry-After`. Messages leave through shared servers, where one script's burst can get a network to flag them, and automation can get a LinkedIn account restricted, which is why the limits exist.
 - Every `POST` takes an `Idempotency-Key`. Retry with the same key, and a send goes out once.
 
 ## Rules for you
