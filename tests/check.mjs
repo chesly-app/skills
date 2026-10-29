@@ -64,7 +64,7 @@ const EXIT_CODES = [
   '| 2 | usage |',
   '| 3 | not signed in (no key, a malformed one, or the key was rejected) |',
   '| 4 | not found (an unknown chat, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |',
-  '| 5 | not final, come back to it: rate limited (a 429: too many requests, a send cap, or too many open event streams), briefly unavailable (a 502, 503 or 504, from the API or a gateway), a first attempt still running (a 409 `idempotency_in_progress`), or a send the network didn\'t confirm (`delivery_unconfirmed`: check the chat before you send it again). `retry_after` says when, if the answer has it |',
+  '| 5 | not final, come back to it: rate limited (a 429: too many requests, a send cap, uploads held after a slow one, or too many open event streams), a request that took too long to arrive (a 408, such as an upload\'s `upload_timeout`), briefly unavailable (a 502, 503 or 504, from the API or a gateway), a first attempt still running (a 409 `idempotency_in_progress`), or a send the network didn\'t confirm (`delivery_unconfirmed`: check the chat before you send it again). `retry_after` says when, if the answer has it |',
   '| 6 | payment required: the account needs an API plan, or a limit of its plan is reached |',
 ];
 
@@ -165,8 +165,8 @@ const API_NAMES = new Set([
   'last_used_at', 'request_id', 'retry_after',
   // chesly login's answers: --no-wait (the device flow), --wait, and a login that keeps a working key.
   'verification_uri_complete', 'user_code', 'expires_in', 'signed_in', 'already_signed_in', 'stored_in',
-  // Values: an account's status, a plan's status.
-  'needs_attention', 'past_due',
+  // Values: an account's status, a plan's status, why a webhook is off.
+  'needs_attention', 'past_due', 'key_revoked',
   // Error codes: the API's.
   'account_not_found', 'chat_not_found', 'message_not_found', 'media_not_found', 'media_expired', 'media_too_large',
   'media_unavailable', 'invalid_cursor', 'rate_limited', 'network_unavailable', 'search_unavailable', 'feed_unavailable',
@@ -176,7 +176,7 @@ const API_NAMES = new Set([
   'webhook_not_found', 'webhook_limit_reached', 'invalid_webhook_url', 'not_a_voice_note', 'transcription_unavailable',
   'key_not_found', 'api_plan_required', 'trial_limit_reached', 'spend_limit_reached', 'calls_exhausted',
   'already_subscribed', 'terms_changed', 'email_send_failed', 'account_reconnect_required', 'api_paused',
-  'payload_too_large',
+  'payload_too_large', 'upload_timeout',
   // Error and warning codes: the CLI's own, and a failed delivery's.
   ...CLI_ERROR_CODES, ...CLI_WARNING_CODES, 'network_rejected', 'not_logged_in', 'rate_limited_by_network',
   // Other clients' settings: OpenAI's Responses API and Codex.
@@ -1141,4 +1141,34 @@ test('an_unconfirmed_delivery_exits_5_never_1', () => {
   }
   const exit5 = chesly('SKILL.md').split('\n').find((line) => line.startsWith('- Exit 5'));
   assert.match(exit5, /`delivery_unconfirmed`[^.]*don't resend/, 'the exit 5 rule never reruns an unconfirmed send');
+});
+
+// ---------------------------------------------------------------------------------------------
+// The second and third pushes of Wave 2
+// ---------------------------------------------------------------------------------------------
+
+/** Why a webhook is off (`disabled_reason`). */
+const WEBHOOK_DISABLED_REASONS = ['user', 'failing', 'gone', 'key_revoked'];
+
+test('a_webhook_says_why_it_turned_off', () => {
+  const off = section(apiReference('events-and-webhooks.md'), 'When a webhook turns off');
+  const { inline } = parseMarkdown(off);
+  assert.deepEqual(WEBHOOK_DISABLED_REASONS.filter((reason) => !inline.includes(reason)), []);
+  const revoked = off.split('\n').find((line) => line.includes('`key_revoked`'));
+  assert.match(revoked, /secret scanning/, 'a leaked key, revoked by secret scanning');
+  assert.match(revoked, /emailed/, 'the owner hears about it');
+  assert.match(revoked, /[Cc]heck the webhook's URL before you turn it back on/);
+});
+
+test('a_slow_upload_waits_out_the_hold', () => {
+  const rest = section(apiReference('rest.md'), 'Files \\(Wave 2\\)');
+  const sending = section(read(join('skills', 'chesly', 'references', 'commands.md')), 'Sending');
+  for (const [text, outcome] of [[rest, /`408` `upload_timeout`/], [sending, /exits 5 with `upload_timeout`/]]) {
+    const line = text.split('\n').find((candidate) => candidate.includes('`upload_timeout`'));
+    assert.ok(line !== undefined, 'one line on a slow upload');
+    assert.match(line, outcome);
+    assert.match(line, /under 50 KB\/s after 10 s, or not finished within 60 s/);
+    assert.match(line, /held for 60 s[^.]*`rate_limited`/);
+    assert.match(line, /wait about 60 s and send again, or send a smaller file on a slow connection/);
+  }
 });

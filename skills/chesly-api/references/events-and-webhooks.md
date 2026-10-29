@@ -178,6 +178,8 @@ A retried event can arrive after newer ones: order events by `timestamp`, and sk
 
 - A `410` answer turns it off at once (`disabled_reason` `gone`).
 - Failing for 3 days turns it off (`failing`); any `2xx` in between starts the count again.
+- GitHub secret scanning revoked the API key that created it, last changed it, or set its URL (`key_revoked`). The owner is emailed. Check the webhook's URL before you turn it back on.
+- A `PATCH` with `{"enabled": false}` turns it off (`user`).
 - While it is off, its pending deliveries are dropped. `PATCH` it with `{"enabled": true}` to turn it back on.
 - While the account has no API plan, deliveries are dropped instead of sent.
 

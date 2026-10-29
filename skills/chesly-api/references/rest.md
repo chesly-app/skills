@@ -160,6 +160,8 @@ curl https://api.chesly.app/v1/media \
 
 The answer, `201`, is `{ "id": "media_…", "mime_type": "application/pdf", "size": 48213, "file_name": "report.pdf" }`. Send it as `media_id`, with any `text` as its caption. One file a message, of at most 50 MB (50,000,000 bytes); a bigger one is `400` `media_too_large`.
 
+A too-slow upload (under 50 KB/s after 10 s, or not finished within 60 s) answers `408` `upload_timeout`, and the account's uploads are then held for 60 s (`429` `rate_limited`): wait about 60 s and send again, or send a smaller file on a slow connection.
+
 ## Contacts and transcripts (Wave 2)
 
 - `GET /v1/contacts?q=<name>` finds the people the user has direct chats with, on every network: `q` is 1 to 100 characters, `limit` 1 to 50 (default 20). Each contact has `id` (`contact_…`), `name`, `network`, `account_id` and `chat_id`, the direct chat to send to. No phone numbers or handles.
