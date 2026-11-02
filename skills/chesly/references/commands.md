@@ -148,9 +148,9 @@ New keys come from `chesly login`, or from https://web.chesly.app/api/keys. `key
 | 3 | not signed in (no key, a malformed one, or the key was rejected) |
 | 4 | not found (an unknown chat, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |
 | 5 | not final, come back to it: rate limited (a 429: too many requests, a send cap, uploads held after a slow one, or too many open event streams), a request that took too long to arrive (a 408, such as an upload's `upload_timeout`), briefly unavailable (a 502, 503 or 504, from the API or a gateway), a first attempt still running (a 409 `idempotency_in_progress`), or a send the network didn't confirm (`delivery_unconfirmed`: check the chat before you send it again). `retry_after` says when, if the answer has it |
-| 6 | payment required: the account needs an API plan, or a limit of its plan is reached |
+| 6 | payment required: the account needs an API plan, or this period's transcription minutes are used up |
 
-A `400` `invalid_request` also exits 2, as a usage error. A send still running after the CLI's 3 tries carries the `idempotency_key` to retry with. Exit 5 without `retry_after`, such as a gateway's 502 or 504: wait a few seconds, then try again, and give up after a few tries. Exit 2 for a `400`, exit 5 for a 408, 409, 502, 503, 504 or `delivery_unconfirmed`, and exit 6 arrive with Wave 2. On exit 6, the user starts a plan at https://web.chesly.app/api/billing.
+A `400` `invalid_request` also exits 2, as a usage error. A send still running after the CLI's 3 tries carries the `idempotency_key` to retry with. Exit 5 without `retry_after`, such as a gateway's 502 or 504: wait a few seconds, then try again, and give up after a few tries. Exit 2 for a `400`, exit 5 for a 408, 409, 502, 503, 504 or `delivery_unconfirmed`, and exit 6 arrive with Wave 2. On exit 6 with `api_plan_required`, the user starts a plan at https://web.chesly.app/api/billing; with `transcription_limit_reached`, the minutes come back next period, or Pro has 300 minutes.
 
 ## Errors
 

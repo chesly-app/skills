@@ -65,7 +65,7 @@ const EXIT_CODES = [
   '| 3 | not signed in (no key, a malformed one, or the key was rejected) |',
   '| 4 | not found (an unknown chat, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |',
   '| 5 | not final, come back to it: rate limited (a 429: too many requests, a send cap, uploads held after a slow one, or too many open event streams), a request that took too long to arrive (a 408, such as an upload\'s `upload_timeout`), briefly unavailable (a 502, 503 or 504, from the API or a gateway), a first attempt still running (a 409 `idempotency_in_progress`), or a send the network didn\'t confirm (`delivery_unconfirmed`: check the chat before you send it again). `retry_after` says when, if the answer has it |',
-  '| 6 | payment required: the account needs an API plan, or a limit of its plan is reached |',
+  '| 6 | payment required: the account needs an API plan, or this period\'s transcription minutes are used up |',
 ];
 
 /** The codes the CLI raises itself, and its warnings, as its errors export lists them (`LOCAL_ERROR_CODES`, `LOCAL_WARNING_CODES`). */
