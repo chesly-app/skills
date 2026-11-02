@@ -122,7 +122,7 @@ Names are looked up among chat networks only. To find an email thread by its sub
 | `chesly webhooks test <id> [--idempotency-key <key>]` | Sends it a test event now. (Wave 2) |
 | `chesly webhooks deliveries <id> [--status <status>] [--limit <n>] [--cursor <cursor>]` | Its recent deliveries: each one's status (`pending`, `succeeded`, `failed` or `discarded`), attempts and the endpoint's answer. (Wave 2) |
 
-Without `--networks`, a webhook gets every network but email. The plan sets how many webhooks there can be (`limits.webhooks`). `create`, `rotate` and `test` do it at most once per `--idempotency-key`, however often the command runs: a retried `rotate` shows the same new secret instead of rotating twice. The `chesly-api` skill covers receiving and verifying webhooks.
+Without `--networks`, a webhook gets every network but email. The plan sets how many webhooks there can be (`limits.webhooks`). When the plan can't be checked just now, `webhooks create` exits 5 with `plan_unavailable`: wait `retry_after` and try again once or twice. Don't tell the user to upgrade. `create`, `rotate` and `test` do it at most once per `--idempotency-key`, however often the command runs: a retried `rotate` shows the same new secret instead of rotating twice. The `chesly-api` skill covers receiving and verifying webhooks.
 
 ## Keys and usage
 

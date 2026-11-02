@@ -97,7 +97,7 @@ Every error is `application/problem+json` (RFC 9457):
 - `title` is fixed per code; `detail` explains this occurrence. `request_id` is what support looks up.
 - A `400` from bad parameters lists each problem in `errors`, with its `detail` and `pointer`.
 - A `429` or `503` carries `Retry-After` and `retry_after`, in seconds. A `503` `upstream_unavailable` is temporary: retry it.
-- Codes to expect: `invalid_api_key` (401), `insufficient_scope` (403), `chat_not_found` and `message_not_found` (404), `rate_limited` and `send_limit_reached` (429), `api_plan_required` and `transcription_limit_reached` (402), `upstream_unavailable` (503).
+- Codes to expect: `invalid_api_key` (401), `insufficient_scope` (403), `chat_not_found` and `message_not_found` (404), `rate_limited` and `send_limit_reached` (429), `api_plan_required` and `transcription_limit_reached` (402), `upstream_unavailable` and `plan_unavailable` (503).
 
 ## Idempotency (Wave 2)
 

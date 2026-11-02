@@ -173,7 +173,7 @@ const API_NAMES = new Set([
   'internal_error', 'idempotency_key_invalid', 'idempotency_key_reused', 'idempotency_in_progress', 'message_request',
   'send_limit_reached', 'text_too_long', 'invalid_reply_to', 'unsupported_chat', 'events_expired', 'too_many_streams',
   'webhook_not_found', 'webhook_limit_reached', 'invalid_webhook_url', 'not_a_voice_note', 'transcription_unavailable',
-  'key_not_found', 'key_limit_reached', 'api_plan_required', 'transcription_limit_reached',
+  'key_not_found', 'key_limit_reached', 'api_plan_required', 'transcription_limit_reached', 'plan_unavailable',
   'already_subscribed', 'terms_changed', 'email_send_failed', 'account_reconnect_required', 'api_paused',
   'payload_too_large', 'upload_timeout',
   // Error and warning codes: the CLI's own, and a failed delivery's.
@@ -1224,4 +1224,18 @@ test('a_downgrade_waits_for_the_period_end', () => {
   assert.match(plans, /A downgrade applies at the end of the billing period, so its lower limits start then/);
   assert.match(plans, /`plan\.scheduled_change`/);
   for (const file of copyFiles()) assert.doesNotMatch(read(file), /[Ss]witching plans changes the request limits at once/, file);
+});
+
+test('plan_unavailable_is_retried_not_upgraded', () => {
+  // R121: creating a webhook while the plan can't be read is a short 503, never a reason to upgrade.
+  const codes = section(apiReference('rest.md'), 'Errors').split('\n').find((line) => line.startsWith('- Codes to expect:'));
+  assert.match(codes, /`plan_unavailable`/);
+  const files = [apiReference('events-and-webhooks.md'), read(join('skills', 'chesly', 'references', 'commands.md'))];
+  for (const [text, retry] of [[files[0], /wait `Retry-After`/], [files[1], /exits 5[^\n]*wait `retry_after`/]]) {
+    const line = text.split('\n').find((candidate) => candidate.includes('`plan_unavailable`'));
+    assert.ok(line !== undefined, 'one line on plan_unavailable');
+    assert.match(line, retry);
+    assert.match(line, /try again once or twice/);
+    assert.match(line, /[Dd]on't tell the user to upgrade/);
+  }
 });

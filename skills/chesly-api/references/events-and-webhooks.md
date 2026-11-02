@@ -111,6 +111,7 @@ The `201` answer is the webhook with its `secret` (`whsec_…`), shown only this
 - `payload`: `full` (the default) or `ids`, where `data` holds only the event's IDs (`message_id`, `chat_id`, `account_id`) and your code fetches the rest with its key. Use `ids` when message text shouldn't pass through the service that receives your webhooks.
 - `description`: a note for you.
 - The plan sets how many there can be (`limits.webhooks` in `GET /v1/me`: 3 on Personal, 10 on Pro); one more is `400` `webhook_limit_reached`.
+- `503` `plan_unavailable` (`Retry-After: 5`) means the plan couldn't be checked just now: wait `Retry-After` and try again once or twice. Don't tell the user to upgrade: it says nothing about the plan's limits.
 
 `PATCH /v1/webhooks/{id}` changes any of those, and `{"enabled": false}` or `{"enabled": true}` turns the webhook off or on. `DELETE /v1/webhooks/{id}` removes it and drops its pending deliveries. `GET /v1/webhooks` lists them, never with their secrets.
 
