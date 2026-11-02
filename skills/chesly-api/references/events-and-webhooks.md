@@ -110,7 +110,7 @@ The `201` answer is the webhook with its `secret` (`whsec_…`), shown only this
 - `networks`: the networks. Empty or left out: every network but email.
 - `payload`: `full` (the default) or `ids`, where `data` holds only the event's IDs (`message_id`, `chat_id`, `account_id`) and your code fetches the rest with its key. Use `ids` when message text shouldn't pass through the service that receives your webhooks.
 - `description`: a note for you.
-- At most 10 webhooks; the eleventh is `400` `webhook_limit_reached`.
+- The plan sets how many there can be (`limits.webhooks` in `GET /v1/me`: 3 on Personal, 10 on Pro); one more is `400` `webhook_limit_reached`.
 
 `PATCH /v1/webhooks/{id}` changes any of those, and `{"enabled": false}` or `{"enabled": true}` turns the webhook off or on. `DELETE /v1/webhooks/{id}` removes it and drops its pending deliveries. `GET /v1/webhooks` lists them, never with their secrets.
 

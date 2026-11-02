@@ -9,7 +9,7 @@ Agent skills for [Chesly](https://agents.chesly.app). With them, your agent read
 
 ## Install
 
-You need the Chesly app with at least one account connected, and an API plan. The plan starts with a 7-day trial at [web.chesly.app/api/billing](https://web.chesly.app/api/billing).
+You need the Chesly app with at least one account connected, and an API plan: Personal ($19 a month) or Pro ($49), which differ only in limits. Either starts with a 7-day trial at [web.chesly.app/api/billing](https://web.chesly.app/api/billing).
 
 ### Any agent
 

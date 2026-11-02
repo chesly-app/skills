@@ -28,7 +28,8 @@ curl https://api.chesly.app/v1/catch_up -H "Authorization: Bearer $CHESLY_API_KE
 - The user makes keys at https://web.chesly.app/api/keys, or signs in with `chesly login`, after which `$(chesly key --reveal)` hands the CLI's key to a command, such as an MCP client's setup. Use `--reveal` only inside `$(…)`: on its own, it prints the key into the transcript.
 - A full-access key reads and sends. A read-only key may only `GET`, and the MCP server shows it 7 of its 10 tools (Wave 2).
 - Keep a key in an environment variable (`CHESLY_API_KEY`) or a secret store, out of code and repositories, and never type or paste a key itself, on a command line or into the chat. A revoked key stops working on its next request: `chesly logout` and `chesly login --force` revoke the CLI's key, so set up again any client that used it.
-- The API needs a plan. A `402` (`api_plan_required`, `trial_limit_reached`, `spend_limit_reached`) means the user starts the plan, or raises its spend limit, at https://web.chesly.app/api/billing. `GET /v1/me` always answers, with the plan, usage and limits.
+- The API needs a plan: Personal or Pro, the same API with different limits, and calls are counted, never billed. `GET /v1/me` always answers, with the plan and its `limits` (requests, keys, webhooks): read them rather than assume numbers. A `402` `api_plan_required` means the user starts a plan at https://web.chesly.app/api/billing.
+- A `402` `transcription_limit_reached` means this period's transcription minutes are used up: tell the user they come back next period, or that Pro has 300 minutes. Don't retry.
 
 ## What it does, and doesn't
 

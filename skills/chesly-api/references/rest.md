@@ -17,7 +17,7 @@ Rows and sections marked (Wave 2) arrive with the API's second wave.
 - [Files (Wave 2)](#files-wave-2)
 - [Contacts and transcripts (Wave 2)](#contacts-and-transcripts-wave-2)
 - [Limits](#limits)
-- [Calls and billing](#calls-and-billing)
+- [Plans and billing](#plans-and-billing)
 
 ## Authentication
 
@@ -35,7 +35,7 @@ curl https://api.chesly.app/v1/me -H "Authorization: Bearer $CHESLY_API_KEY"
 
 | Endpoint | What it does |
 |---|---|
-| `GET /v1/me` | The key, usage this period and the limits, and from Wave 2 the plan and each account's send limits. (Wave 2) |
+| `GET /v1/me` | The key, the plan (`plan`) and its usage this period, and the `limits`: the plan's requests, keys and webhooks, and each account's send limits. (Wave 2) |
 | `GET /v1/accounts` | The connected accounts: `id`, `network`, `display_name`, `status` (`connected`, `disconnected` or `needs_attention`) and `connected_at`. |
 | `GET /v1/chats` | Chats, pinned first, then the newest: `account_id`, `unread`, `archived` (`true`, `false` or `all`), `q` (a name), `sort` (`recent` or `unread`), `limit`, `cursor`. |
 | `GET /v1/chats/{chat_id}` | One chat. |
@@ -97,7 +97,7 @@ Every error is `application/problem+json` (RFC 9457):
 - `title` is fixed per code; `detail` explains this occurrence. `request_id` is what support looks up.
 - A `400` from bad parameters lists each problem in `errors`, with its `detail` and `pointer`.
 - A `429` or `503` carries `Retry-After` and `retry_after`, in seconds. A `503` `upstream_unavailable` is temporary: retry it.
-- Codes to expect: `invalid_api_key` (401), `insufficient_scope` (403), `chat_not_found` and `message_not_found` (404), `rate_limited` and `send_limit_reached` (429), `api_plan_required` and `spend_limit_reached` (402), `upstream_unavailable` (503).
+- Codes to expect: `invalid_api_key` (401), `insufficient_scope` (403), `chat_not_found` and `message_not_found` (404), `rate_limited` and `send_limit_reached` (429), `api_plan_required` and `transcription_limit_reached` (402), `upstream_unavailable` (503).
 
 ## Idempotency (Wave 2)
 
@@ -165,28 +165,39 @@ A too-slow upload (under 50 KB/s after 10 s, or not finished within 60 s) answer
 ## Contacts and transcripts (Wave 2)
 
 - `GET /v1/contacts?q=<name>` finds the people the user has direct chats with, on every network: `q` is 1 to 100 characters, `limit` 1 to 50 (default 20). Each contact has `id` (`contact_…`), `name`, `network`, `account_id` and `chat_id`, the direct chat to send to. No phone numbers or handles.
-- `POST /v1/messages/{message_id}/transcript` answers `{ message_id, text, language, duration_seconds, cached }`. It needs a full-access key and costs $0.02 a minute of audio; transcribing the same voice note again costs no minutes (`cached` is true). A message that isn't a voice note is `400` `not_a_voice_note`; while transcription is down, `503` `transcription_unavailable`.
+- `POST /v1/messages/{message_id}/transcript` answers `{ message_id, text, language, duration_seconds, cached }`. It needs a full-access key and uses the plan's transcription minutes: `plan.transcription_seconds_this_period` of `plan.transcription_seconds_included` in `GET /v1/me`. The same voice note again uses none (`cached` is true). A message that isn't a voice note is `400` `not_a_voice_note`; while transcription is down, `503` `transcription_unavailable`.
+- Past the period's minutes, it is `402` `transcription_limit_reached` until the next period: tell the user they come back then, or that Pro has 300 minutes. Don't retry.
 
 ## Limits
 
 | Limit | Value |
 |---|---|
-| Requests per key | 10 a second and 600 a minute |
-| Requests per user, all keys together | 10 a second and 600 a minute (Wave 2) |
+| Requests, per key and for all of a user's keys together | The plan's: `limits.requests_per_second` and `limits.requests_per_minute` |
 | Since-feed pages (`GET /v1/messages?since=`) | 30 a minute, per user (Wave 2) |
 | Searches, catch-ups | 30 a minute each, per user |
 | Sends on WhatsApp | 60 an hour and 250 a day, per account |
 | Sends on every other network, email included | 30 an hour and 150 a day, per account |
 | Files | One per message, up to 50 MB (50,000,000 bytes) |
 | Live streams | 5 open at once |
-| Webhooks | 10 |
-| Keys | 25 |
+| Webhooks | The plan's: `limits.webhooks` |
+| Active keys | The plan's: `limits.api_keys` |
 
-Past a limit: `429` with `Retry-After`. More keys separate agents, but never add requests: a user's keys share one limit. Every answer carries `RateLimit` and `RateLimit-Policy` headers, and `GET /v1/me` shows each account's sends so far (`limits.sends`: `per_hour`, `per_day`, `used_last_hour`, `used_last_day`).
+Past a limit: `429` with `Retry-After`. More keys separate agents, but never add requests: a user's keys share the plan's limit. `GET /v1/me` has the plan's numbers in `limits`, and each account's sends so far (`limits.sends`: `per_hour`, `per_day`, `used_last_hour`, `used_last_day`). Every answer carries `RateLimit` and `RateLimit-Policy` headers.
 
-## Calls and billing
+## Plans and billing
 
-- The plan is $49 a month with 50,000 calls, then $1 per 1,000 calls; voice note transcripts are $0.02 a minute. It starts with a 7-day trial.
-- A call is a REST request or an MCP tool call. Free: events, the live stream, webhook deliveries, `GET /v1/openapi.json`, and any `402`, `429` or `5xx` answer.
-- A spend limit caps what a month costs beyond the $49: $250 unless the user changes it. At the limit, calls answer `402` `spend_limit_reached`, and `GET /v1/me` keeps answering.
-- The user buys and manages the plan at https://web.chesly.app/api/billing.
+Two flat plans, with the same API: reads, sends, events, webhooks, the CLI and MCP, on every connected account. They differ only in limits:
+
+| | Personal | Pro |
+|---|---|---|
+| Price | $19 a month | $49 a month |
+| Transcription a period | 60 minutes | 300 minutes |
+| Active API keys | 5 | 25 |
+| Webhooks | 3 | 10 |
+| Requests, per key and for all of a user's keys together | 5 a second, 300 a minute | 10 a second, 600 a minute |
+
+- Calls are counted, never billed: `plan.calls_this_period` in `GET /v1/me` shows them.
+- `plan` in `GET /v1/me` says which plan it is (`personal` or `pro`), its status and its period, and `limits` has its numbers. Read them rather than assume.
+- Each plan starts with a 7-day trial, with a card and the plan's full limits.
+- Switching plans changes the request limits at once. A downgrade deletes nothing, but a new key or webhook past the plan's limit is refused (`key_limit_reached`, `webhook_limit_reached`).
+- `402` `api_plan_required` means there is no plan. The user buys, switches and manages it at https://web.chesly.app/api/billing.

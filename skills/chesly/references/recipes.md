@@ -56,7 +56,7 @@ The CLI has no transcribe command, so this step uses the Chesly API (the `chesly
      -H "Idempotency-Key: $(uuidgen)"
    ```
 
-   The answer's `text` is the transcript, with `language` and `duration_seconds`. Transcripts cost $0.02 a minute; transcribing the same voice note again costs no minutes (`cached` is true).
+   The answer's `text` is the transcript, with `language` and `duration_seconds`. It uses the plan's transcription minutes; the same voice note again uses none (`cached` is true). A `402` `transcription_limit_reached` means they're used up until the next period: tell the user, and that Pro has 300 minutes. Don't retry.
 3. Show the user the transcript and the chat it goes to, and wait for their OK.
 4. Send the transcript as the user approved it, in a quoted heredoc. Never pass it through a variable or `$(…)`: the shell would rewrite it.
 

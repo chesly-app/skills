@@ -153,11 +153,10 @@ const API_NAMES = new Set([
   'display_name', 'connected_at', 'unread_count', 'last_message_at', 'is_archived', 'is_pinned', 'is_muted',
   'is_message_request', 'member_count', 'is_me', 'sent_at', 'mime_type', 'file_name', 'next_cursor', 'has_more',
   'chat_name', 'receipt_sent',
-  // Fields: GET /v1/me, its plan and its send limits.
-  'api_version', 'requests_per_second', 'requests_per_minute', 'period_start', 'period_end', 'event_streams', 'per_hour',
-  'per_day', 'used_last_hour', 'used_last_day', 'trial_ends_at', 'included_calls', 'calls_this_period', 'overage_calls',
-  'transcription_seconds_this_period', 'estimated_amount_cents', 'spend_limit_cents', 'billing_route',
-  'pack_balance_calls',
+  // Fields: GET /v1/me, its plan (PlanSummary v2) and its limits.
+  'api_version', 'requests_per_second', 'requests_per_minute', 'api_keys', 'event_streams', 'per_hour', 'per_day',
+  'used_last_hour', 'used_last_day', 'period_start', 'period_end', 'trial_ends_at', 'cancel_at', 'calls_this_period',
+  'transcription_seconds_this_period', 'transcription_seconds_included',
   // Fields: delivery, events, webhooks and their deliveries, contacts, transcripts, keys and problems.
   'updated_at', 'created_at', 'last_read_message_id', 'event_types', 'disabled_reason', 'failing_since',
   'previous_secret_expires_at', 'delivery_id', 'event_id', 'event_type', 'next_attempt_at', 'last_attempt_at',
@@ -174,7 +173,7 @@ const API_NAMES = new Set([
   'internal_error', 'idempotency_key_invalid', 'idempotency_key_reused', 'idempotency_in_progress', 'message_request',
   'send_limit_reached', 'text_too_long', 'invalid_reply_to', 'unsupported_chat', 'events_expired', 'too_many_streams',
   'webhook_not_found', 'webhook_limit_reached', 'invalid_webhook_url', 'not_a_voice_note', 'transcription_unavailable',
-  'key_not_found', 'api_plan_required', 'trial_limit_reached', 'spend_limit_reached', 'calls_exhausted',
+  'key_not_found', 'key_limit_reached', 'api_plan_required', 'transcription_limit_reached',
   'already_subscribed', 'terms_changed', 'email_send_failed', 'account_reconnect_required', 'api_paused',
   'payload_too_large', 'upload_timeout',
   // Error and warning codes: the CLI's own, and a failed delivery's.
@@ -931,9 +930,12 @@ test('the_rest_reference_covers_every_endpoint_and_marks_wave_2', () => {
   }
 });
 
-test('the_rest_reference_gives_the_per_user_limits', () => {
+test('the_rest_reference_gives_the_plans_limits_and_the_per_user_ones', () => {
+  // R65's per-user limit is the plan's own (R117); the feed-page budget stays.
   const limits = section(apiReference('rest.md'), 'Limits');
-  assert.match(limits, /^\| Requests per user, all keys together \| 10 a second and 600 a minute \(Wave 2\) \|$/m);
+  assert.match(limits, /^\| Requests, per key and for all of a user's keys together \| The plan's: `limits\.requests_per_second` and `limits\.requests_per_minute` \|$/m);
+  assert.match(limits, /^\| Active keys \| The plan's: `limits\.api_keys` \|$/m);
+  assert.match(limits, /^\| Webhooks \| The plan's: `limits\.webhooks` \|$/m);
   assert.match(limits, /^\| Since-feed pages \(`GET \/v1\/messages\?since=`\) \| 30 a minute, per user \(Wave 2\) \|$/m);
 });
 
@@ -1170,5 +1172,47 @@ test('a_slow_upload_waits_out_the_hold', () => {
     assert.match(line, /under 50 KB\/s after 10 s, or not finished within 60 s/);
     assert.match(line, /held for 60 s[^.]*`rate_limited`/);
     assert.match(line, /wait about 60 s and send again, or send a smaller file on a slow connection/);
+  }
+});
+
+// ---------------------------------------------------------------------------------------------
+// Pricing v2: two flat plans, no call metering (R117)
+// ---------------------------------------------------------------------------------------------
+
+/** The two plans: everything else is the same on both, and calls are counted, never billed. */
+const PLANS = [
+  ['Price', '$19 a month', '$49 a month'],
+  ['Transcription a period', '60 minutes', '300 minutes'],
+  ['Active API keys', '5', '25'],
+  ['Webhooks', '3', '10'],
+  ['Requests, per key and for all of a user\'s keys together', '5 a second, 300 a minute', '10 a second, 600 a minute'],
+];
+
+test('the_plans_are_stated_once_with_their_limits', () => {
+  const plans = section(apiReference('rest.md'), 'Plans and billing');
+  assert.match(plans, /^\| \| Personal \| Pro \|$/m);
+  for (const [what, personal, pro] of PLANS) assert.ok(plans.includes(`| ${what} | ${personal} | ${pro} |`), what);
+  assert.match(plans, /[Cc]alls are counted, never billed/);
+  assert.match(plans, /`key_limit_reached`[^\n]*`webhook_limit_reached`/, 'a downgrade refuses new ones, deletes none');
+  for (const file of [join('skills', 'chesly-api', 'SKILL.md'), join('skills', 'chesly', 'references', 'commands.md')]) {
+    assert.match(read(file), /`GET \/v1\/me`|`chesly whoami --json`/, `${file} sends the agent to the plan's limits`);
+    assert.match(read(file), /`limits/, `${file} names the limits to read`);
+  }
+});
+
+test('transcription_limit_reached_is_never_retried', () => {
+  // R117: the period's minutes are used up until the next period. The user decides; no retry loop.
+  for (const file of [join('skills', 'chesly-api', 'SKILL.md'), join('skills', 'chesly-api', 'references', 'rest.md'),
+    join('skills', 'chesly-api', 'references', 'mcp.md'), join('skills', 'chesly', 'references', 'recipes.md')]) {
+    const lines = read(file).split('\n').filter((candidate) => candidate.includes('`transcription_limit_reached`'));
+    assert.ok(lines.length > 0, `${file} names transcription_limit_reached`);
+    assert.ok(lines.some((line) => /next period/.test(line) && /Pro has 300 minutes/.test(line) && /[Dd]on't retry/.test(line)),
+      `${file}: wait for the next period or Pro's 300 minutes, and don't retry`);
+  }
+});
+
+test('no_metered_pricing_is_left', () => {
+  for (const file of copyFiles()) {
+    assert.doesNotMatch(read(file), /50,000 calls|overage|spend[ _]limit|calls_exhausted|trial_limit|per 1,000 calls|[$]0\.02|estimated|\bpacks?\b|metered/i, file);
   }
 });

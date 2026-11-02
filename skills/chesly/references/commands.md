@@ -34,7 +34,7 @@ Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2.
 
 Never type or paste a key itself: on a command line, the process list and the shell history keep it. On a server or in CI, the user sets `CHESLY_API_KEY` instead (it wins over the stored key), or pipes the key to `chesly login --key -`.
 
-The key goes to the OS keychain, or to `~/.config/chesly/credentials.json` (mode 0600) where there is no keychain. A pending sign-in waits in `~/.config/chesly/pending-login.json` until `--wait` finishes it or the code expires, 10 minutes later; `--wait` then fails with `expired_token`, and a new `--no-wait` starts over. A denied sign-in fails with `access_denied`. Each sign-in makes a new key, and an account can have 25.
+The key goes to the OS keychain, or to `~/.config/chesly/credentials.json` (mode 0600) where there is no keychain. A pending sign-in waits in `~/.config/chesly/pending-login.json` until `--wait` finishes it or the code expires, 10 minutes later; `--wait` then fails with `expired_token`, and a new `--no-wait` starts over. A denied sign-in fails with `access_denied`. Each sign-in makes a new key, up to the plan's limit on active keys (`limits.api_keys` in `chesly whoami --json`); past it, a new one is refused (`key_limit_reached`).
 
 A read-only key (scope `read`) can read, search and watch, but not send.
 
@@ -89,7 +89,7 @@ Names are looked up among chat networks only. To find an email thread by its sub
 - `--file <path>` attaches one file of at most 50 MB (50,000,000 bytes), and the text becomes its caption. A file that can't be read fails with `file_unreadable` before anything is sent. Email takes text only.
 - A too-slow upload (under 50 KB/s after 10 s, or not finished within 60 s) exits 5 with `upload_timeout`, and the account's uploads are then held for 60 s (`rate_limited`): wait about 60 s and send again, or send a smaller file on a slow connection.
 - `--media-id <media_id>` attaches a file uploaded before, instead of `--file`: it is how a file send that gave up is retried.
-- The answer is the sent message, its `delivery.status` `queued`. `--wait` asks once a second, within 30 seconds in all, until it is `sent` (success: most networks stop there), `delivered` (only where the network reports it) or `failed`; each ask is a metered call. A failure the network confirmed exits 1 with `delivery_failed`, the reason in `delivery.error.message`. One it didn't confirm (`delivery.error.certain` false) reads `unconfirmed`: `--wait` keeps asking, and if it stays so, the send exits 5 with `delivery_unconfirmed`. It may have been delivered, so don't resend until a later `message.delivery_failed` with `certain: true` says it wasn't. Once the message went out, it is always printed and the exit is 0, even when following it fails: that is a `delivery_wait_failed` warning, with the `idempotency_key` that asks the API for its answer again.
+- The answer is the sent message, its `delivery.status` `queued`. `--wait` asks once a second, within 30 seconds in all, until it is `sent` (success: most networks stop there), `delivered` (only where the network reports it) or `failed`; each ask counts as a call. A failure the network confirmed exits 1 with `delivery_failed`, the reason in `delivery.error.message`. One it didn't confirm (`delivery.error.certain` false) reads `unconfirmed`: `--wait` keeps asking, and if it stays so, the send exits 5 with `delivery_unconfirmed`. It may have been delivered, so don't resend until a later `message.delivery_failed` with `certain: true` says it wasn't. Once the message went out, it is always printed and the exit is 0, even when following it fails: that is a `delivery_wait_failed` warning, with the `idempotency_key` that asks the API for its answer again.
 - Every send carries an `Idempotency-Key`, and the CLI's own retries (after a network error, a 502, 503 or 504, or while a first attempt still runs: 3 tries) reuse it, so one command sends at most once. When it gives up without knowing whether the message went out, the error carries the key as `idempotency_key`: run the same command again, with the same text and `--idempotency-key <that key>`, and the API answers with the first attempt's result instead of sending again. A file send's error also carries its upload as `media_id`: retry with `--media-id <media_id> --idempotency-key <key>`, without `--file`, since a new upload would be another media ID, which the same key refuses (`422` `idempotency_key_reused`).
 - Each connected account may send 60 messages an hour and 250 a day on WhatsApp, and 30 an hour and 150 a day on every other network, email included. Over a limit, the send exits 5 with `send_limit_reached` and `retry_after`.
 - Text limits, in UTF-16 code units: Instagram 1,000; Discord 2,000; Telegram 4,096; email 100,000; every other network 10,000. Longer text is refused with `text_too_long`.
@@ -122,7 +122,7 @@ Names are looked up among chat networks only. To find an email thread by its sub
 | `chesly webhooks test <id> [--idempotency-key <key>]` | Sends it a test event now. (Wave 2) |
 | `chesly webhooks deliveries <id> [--status <status>] [--limit <n>] [--cursor <cursor>]` | Its recent deliveries: each one's status (`pending`, `succeeded`, `failed` or `discarded`), attempts and the endpoint's answer. (Wave 2) |
 
-Without `--networks`, a webhook gets every network but email. `create`, `rotate` and `test` do it at most once per `--idempotency-key`, however often the command runs: a retried `rotate` shows the same new secret instead of rotating twice. The `chesly-api` skill covers receiving and verifying webhooks.
+Without `--networks`, a webhook gets every network but email. The plan sets how many webhooks there can be (`limits.webhooks`). `create`, `rotate` and `test` do it at most once per `--idempotency-key`, however often the command runs: a retried `rotate` shows the same new secret instead of rotating twice. The `chesly-api` skill covers receiving and verifying webhooks.
 
 ## Keys and usage
 
@@ -130,7 +130,7 @@ Without `--networks`, a webhook gets every network but email. `create`, `rotate`
 |---|---|
 | `chesly keys list` | The user's active API keys: `id`, `name`, `scope`, `prefix`, `last4`, `created_at` and `last_used_at`. (Wave 2) |
 | `chesly keys revoke <key_id>` | Revokes a key. Its next request is refused. (Wave 2) |
-| `chesly usage` | The plan, this period's calls and estimated cost, and how many messages each account can still send. (Wave 2) |
+| `chesly usage` | The plan and its limits, this period's calls (counted, never billed) and transcription minutes, and how many messages each account can still send. (Wave 2) |
 
 New keys come from `chesly login`, or from https://web.chesly.app/api/keys. `keys list` marks the key this CLI uses; after revoking that one, run `chesly login` again.
 
@@ -150,7 +150,7 @@ New keys come from `chesly login`, or from https://web.chesly.app/api/keys. `key
 | 5 | not final, come back to it: rate limited (a 429: too many requests, a send cap, uploads held after a slow one, or too many open event streams), a request that took too long to arrive (a 408, such as an upload's `upload_timeout`), briefly unavailable (a 502, 503 or 504, from the API or a gateway), a first attempt still running (a 409 `idempotency_in_progress`), or a send the network didn't confirm (`delivery_unconfirmed`: check the chat before you send it again). `retry_after` says when, if the answer has it |
 | 6 | payment required: the account needs an API plan, or a limit of its plan is reached |
 
-A `400` `invalid_request` also exits 2, as a usage error. A send still running after the CLI's 3 tries carries the `idempotency_key` to retry with. Exit 5 without `retry_after`, such as a gateway's 502 or 504: wait a few seconds, then try again, and give up after a few tries. Exit 2 for a `400`, exit 5 for a 408, 409, 502, 503, 504 or `delivery_unconfirmed`, and exit 6 arrive with Wave 2. On exit 6, the user starts the plan, or raises its limit, at https://web.chesly.app/api/billing.
+A `400` `invalid_request` also exits 2, as a usage error. A send still running after the CLI's 3 tries carries the `idempotency_key` to retry with. Exit 5 without `retry_after`, such as a gateway's 502 or 504: wait a few seconds, then try again, and give up after a few tries. Exit 2 for a `400`, exit 5 for a 408, 409, 502, 503, 504 or `delivery_unconfirmed`, and exit 6 arrive with Wave 2. On exit 6, the user starts a plan at https://web.chesly.app/api/billing.
 
 ## Errors
 
