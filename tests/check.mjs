@@ -156,7 +156,7 @@ const API_NAMES = new Set([
   // Fields: GET /v1/me, its plan (PlanSummary v2) and its limits.
   'api_version', 'requests_per_second', 'requests_per_minute', 'api_keys', 'event_streams', 'per_hour', 'per_day',
   'used_last_hour', 'used_last_day', 'period_start', 'period_end', 'trial_ends_at', 'cancel_at', 'calls_this_period',
-  'transcription_seconds_this_period', 'transcription_seconds_included',
+  'transcription_seconds_this_period', 'transcription_seconds_included', 'scheduled_change',
   // Fields: delivery, events, webhooks and their deliveries, contacts, transcripts, keys and problems.
   'updated_at', 'created_at', 'last_read_message_id', 'event_types', 'disabled_reason', 'failing_since',
   'previous_secret_expires_at', 'delivery_id', 'event_id', 'event_type', 'next_attempt_at', 'last_attempt_at',
@@ -1215,4 +1215,13 @@ test('no_metered_pricing_is_left', () => {
   for (const file of copyFiles()) {
     assert.doesNotMatch(read(file), /50,000 calls|overage|spend[ _]limit|calls_exhausted|trial_limit|per 1,000 calls|[$]0\.02|estimated|\bpacks?\b|metered/i, file);
   }
+});
+
+test('a_downgrade_waits_for_the_period_end', () => {
+  // R118, R119: an upgrade applies at once; a downgrade at the period's end, shown in plan.scheduled_change.
+  const plans = section(apiReference('rest.md'), 'Plans and billing');
+  assert.match(plans, /An upgrade applies at once/);
+  assert.match(plans, /A downgrade applies at the end of the billing period, so its lower limits start then/);
+  assert.match(plans, /`plan\.scheduled_change`/);
+  for (const file of copyFiles()) assert.doesNotMatch(read(file), /[Ss]witching plans changes the request limits at once/, file);
 });

@@ -199,5 +199,5 @@ Two flat plans, with the same API: reads, sends, events, webhooks, the CLI and M
 - Calls are counted, never billed: `plan.calls_this_period` in `GET /v1/me` shows them.
 - `plan` in `GET /v1/me` says which plan it is (`personal` or `pro`), its status and its period, and `limits` has its numbers. Read them rather than assume.
 - Each plan starts with a 7-day trial, with a card and the plan's full limits.
-- Switching plans changes the request limits at once. A downgrade deletes nothing, but a new key or webhook past the plan's limit is refused (`key_limit_reached`, `webhook_limit_reached`).
+- An upgrade applies at once. A downgrade applies at the end of the billing period, so its lower limits start then; until then `plan.scheduled_change` shows it (`{ plan, at }`, or `null` when nothing is waiting). A downgrade deletes nothing, but a new key or webhook past the plan's limit is refused (`key_limit_reached`, `webhook_limit_reached`).
 - `402` `api_plan_required` means there is no plan. The user buys, switches and manages it at https://web.chesly.app/api/billing.
