@@ -34,7 +34,7 @@ Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2.
 
 Never type or paste a key itself: on a command line, the process list and the shell history keep it. On a server or in CI, the user sets `CHESLY_API_KEY` instead (it wins over the stored key), or pipes the key to `chesly login --key -`.
 
-The key goes to the OS keychain, or to `~/.config/chesly/credentials.json` (mode 0600) where there is no keychain. A pending sign-in waits in `~/.config/chesly/pending-login.json` until `--wait` finishes it or the code expires, 10 minutes later; `--wait` then fails with `expired_token`, and a new `--no-wait` starts over. A denied sign-in fails with `access_denied`. Each sign-in makes a new key, up to the plan's limit on active keys (`limits.api_keys` in `chesly whoami --json`); past it, a new one is refused (`key_limit_reached`).
+The key goes to the OS keychain, or to `~/.config/chesly/credentials.json` (mode 0600) where there is no keychain. A pending sign-in waits in `~/.config/chesly/pending-login.json` until `--wait` finishes it or the code expires, 10 minutes later; `--wait` then fails with `expired_token`, and a new `--no-wait` starts over. A denied sign-in fails with `access_denied`. Each sign-in makes a new key, up to 100 active keys on either plan (`limits.api_keys` in `chesly whoami --json`); past it, a new one is refused (`key_limit_reached`).
 
 A read-only key (scope `read`) can read, search and watch, but not send.
 
@@ -105,11 +105,11 @@ Names are looked up among chat networks only. To find an email thread by its sub
 - Each line is an event: `id` (`evt_…`), `type`, `timestamp` and `data`.
 - The types: `message.received`, `message.sent` (the user's own, from any device), `message.edited`, `message.deleted`, `message.delivery_failed`, `chat.created`, `chat.updated`, `chat.read`, `account.connected`, `account.disconnected`, `account.needs_attention`, `reaction.added` and `reaction.removed`.
 - For `message.received`, `message.sent` and `message.edited`, `data` holds `message` and `chat` (`id`, `name`, `network`, `type`).
-- Without `--after`, the stream starts with new events. It reconnects by itself after a drop and resumes after the last event it printed. To resume after a restart, pass `--after` with the last `id` you handled. Events are kept 4 days: an older resume point gets `410` `events_expired`, and `chesly watch` starts again from now, with an `events_expired` warning.
+- Without `--after`, the stream starts with new events. It reconnects by itself after a drop and resumes after the last event it printed. To resume after a restart, pass `--after` with the last `id` you handled. Events are kept for the plan's event history (`limits.event_retention_days`: 7 or 30 days); an older resume point gets `410` `events_expired`, and `chesly watch` starts again from now, with an `events_expired` warning.
 - The same event can arrive twice: skip an `id` you have seen.
 - In a terminal, a `message.delivery_failed` reads "failed" when `certain` is true, else "unconfirmed, it may have been delivered".
 - Email events come only when `--networks` names `email`.
-- At most 5 streams can be open at once; a sixth exits 5 with `too_many_streams`.
+- The plan sets how many streams can be open at once (`limits.event_streams`); one more exits 5 with `too_many_streams`.
 
 ## Webhooks
 
@@ -150,14 +150,14 @@ New keys come from `chesly login`, or from https://web.chesly.app/api/keys. `key
 | 5 | not final, come back to it: rate limited (a 429: too many requests, a send cap, uploads held after a slow one, or too many open event streams), a request that took too long to arrive (a 408, such as an upload's `upload_timeout`), briefly unavailable (a 502, 503 or 504, from the API or a gateway), a first attempt still running (a 409 `idempotency_in_progress`), or a send the network didn't confirm (`delivery_unconfirmed`: check the chat before you send it again). `retry_after` says when, if the answer has it |
 | 6 | payment required: the account needs an API plan, or this period's transcription minutes are used up |
 
-A `400` `invalid_request` also exits 2, as a usage error. A send still running after the CLI's 3 tries carries the `idempotency_key` to retry with. Exit 5 without `retry_after`, such as a gateway's 502 or 504: wait a few seconds, then try again, and give up after a few tries. Exit 2 for a `400`, exit 5 for a 408, 409, 502, 503, 504 or `delivery_unconfirmed`, and exit 6 arrive with Wave 2. On exit 6 with `api_plan_required`, the user starts a plan at https://web.chesly.app/api/billing; with `transcription_limit_reached`, the minutes come back next period, or Pro has 300 minutes.
+A `400` `invalid_request` also exits 2, as a usage error. A send still running after the CLI's 3 tries carries the `idempotency_key` to retry with. Exit 5 without `retry_after`, such as a gateway's 502 or 504: wait a few seconds, then try again, and give up after a few tries. Exit 2 for a `400`, exit 5 for a 408, 409, 502, 503, 504 or `delivery_unconfirmed`, and exit 6 arrive with Wave 2. On exit 6 with `api_plan_required`, the user starts a plan at https://web.chesly.app/api/billing; with `transcription_limit_reached`, the minutes come back next period, or Pro has 3,000 minutes.
 
 ## Errors
 
 In JSON mode, an error is one line on standard error, as problem details:
 
 ```json
-{"type":"https://agents.chesly.app/docs/errors#rate_limited","title":"Too many requests.","status":429,"detail":"This API key made more than 600 requests in one minute. Retry in 4 s.","code":"rate_limited","request_id":"571d003e-ad60-4a08-858a-b7b5353f39db","retry_after":4}
+{"type":"https://agents.chesly.app/docs/errors#rate_limited","title":"Too many requests.","status":429,"detail":"This API key made more than 900 requests in one minute. Retry in 4 s.","code":"rate_limited","request_id":"571d003e-ad60-4a08-858a-b7b5353f39db","retry_after":4}
 ```
 
 - Branch on `code`. https://agents.chesly.app/docs/errors lists every code.

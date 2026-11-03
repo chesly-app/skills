@@ -1,6 +1,6 @@
 # Events and webhooks (Wave 2)
 
-Every change to the user's chats lands in one log, kept 4 days and ordered per user. There are three ways to take it, with the same events:
+Every change to the user's chats lands in one log, ordered per user and kept for the plan's event history: `limits.event_retention_days` in `GET /v1/me`, 7 days on Personal, 30 on Pro. There are three ways to take it, with the same events:
 
 | Way | Best for |
 |---|---|
@@ -75,7 +75,7 @@ curl "https://api.chesly.app/v1/events?after=evt_LOBiK493MDUR1TH599lfcIHZ&types=
 - It answers `{ events, next_cursor, has_more }`, oldest first. Without `after`, it starts at the oldest event kept.
 - Keep the last event's `id` and pass it as `after` next time: `next_cursor` is that ID, or your `after` when nothing new came. While `has_more` is true, ask again at once.
 - Filters: `types` and `networks` (comma-separated), `chat_id`, `account_id`, and `limit` (1 to 100, default 50).
-- An `after` that is unknown, or older than 4 days, is `410` `events_expired`: start again without it.
+- An `after` that is unknown, or older than the plan's event history, is `410` `events_expired`: start again without it.
 
 ## The live stream
 
@@ -88,7 +88,7 @@ curl -N https://api.chesly.app/v1/events/stream \
 - Server-sent events: the answer starts with `retry: 3000`, then each event is an `id:` line (`evt_…`), an `event:` line (its type) and a `data:` line (the event's JSON), then a blank line. A `: ping` comment comes every 15 seconds.
 - Without `Last-Event-ID` (or `?after=`), it sends new events only. To resume after a drop, reconnect with `Last-Event-ID` set to the last `id` you handled: you get every event after it, once, in order.
 - It takes the feed's filters, and an unknown or expired `Last-Event-ID` is `410` `events_expired` before the stream starts: reconnect without it, and watching restarts from now. `chesly watch` does this itself.
-- A user can keep 5 streams open; a sixth is `429` `too_many_streams`.
+- The plan sets how many streams a user can keep open (`limits.event_streams`); one more is `429` `too_many_streams`.
 - `chesly watch` reads this stream.
 
 ## Webhooks
@@ -110,7 +110,7 @@ The `201` answer is the webhook with its `secret` (`whsec_…`), shown only this
 - `networks`: the networks. Empty or left out: every network but email.
 - `payload`: `full` (the default) or `ids`, where `data` holds only the event's IDs (`message_id`, `chat_id`, `account_id`) and your code fetches the rest with its key. Use `ids` when message text shouldn't pass through the service that receives your webhooks.
 - `description`: a note for you.
-- The plan sets how many there can be (`limits.webhooks` in `GET /v1/me`: 3 on Personal, 10 on Pro); one more is `400` `webhook_limit_reached`.
+- The plan sets how many there can be (`limits.webhooks` in `GET /v1/me`); one more is `400` `webhook_limit_reached`.
 - `503` `plan_unavailable` (`Retry-After: 5`) means the plan couldn't be checked just now: wait `Retry-After` and try again once or twice. Don't tell the user to upgrade: it says nothing about the plan's limits.
 
 `PATCH /v1/webhooks/{id}` changes any of those, and `{"enabled": false}` or `{"enabled": true}` turns the webhook off or on. `DELETE /v1/webhooks/{id}` removes it and drops its pending deliveries. `GET /v1/webhooks` lists them, never with their secrets.

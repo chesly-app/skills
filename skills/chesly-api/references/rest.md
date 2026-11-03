@@ -86,7 +86,7 @@ Every error is `application/problem+json` (RFC 9457):
   "type": "https://agents.chesly.app/docs/errors#rate_limited",
   "title": "Too many requests.",
   "status": 429,
-  "detail": "This API key made more than 600 requests in one minute. Retry in 4 s.",
+  "detail": "This API key made more than 900 requests in one minute. Retry in 4 s.",
   "code": "rate_limited",
   "request_id": "571d003e-ad60-4a08-858a-b7b5353f39db",
   "retry_after": 4
@@ -166,7 +166,7 @@ A too-slow upload (under 50 KB/s after 10 s, or not finished within 60 s) answer
 
 - `GET /v1/contacts?q=<name>` finds the people the user has direct chats with, on every network: `q` is 1 to 100 characters, `limit` 1 to 50 (default 20). Each contact has `id` (`contact_…`), `name`, `network`, `account_id` and `chat_id`, the direct chat to send to. No phone numbers or handles.
 - `POST /v1/messages/{message_id}/transcript` answers `{ message_id, text, language, duration_seconds, cached }`. It needs a full-access key and uses the plan's transcription minutes: `plan.transcription_seconds_this_period` of `plan.transcription_seconds_included` in `GET /v1/me`. The same voice note again uses none (`cached` is true). A message that isn't a voice note is `400` `not_a_voice_note`; while transcription is down, `503` `transcription_unavailable`.
-- Past the period's minutes, it is `402` `transcription_limit_reached` until the next period: tell the user they come back then, or that Pro has 300 minutes. Don't retry.
+- Past the period's minutes, it is `402` `transcription_limit_reached` until the next period: tell the user they come back then, or that Pro has 3,000 minutes. Don't retry.
 
 ## Limits
 
@@ -178,23 +178,27 @@ A too-slow upload (under 50 KB/s after 10 s, or not finished within 60 s) answer
 | Sends on WhatsApp | 60 an hour and 250 a day, per account |
 | Sends on every other network, email included | 30 an hour and 150 a day, per account |
 | Files | One per message, up to 50 MB (50,000,000 bytes) |
-| Live streams | 5 open at once |
+| Live streams | The plan's: `limits.event_streams` |
 | Webhooks | The plan's: `limits.webhooks` |
-| Active keys | The plan's: `limits.api_keys` |
+| Active keys | Up to 100 on both plans (`limits.api_keys`) |
 
 Past a limit: `429` with `Retry-After`. More keys separate agents, but never add requests: a user's keys share the plan's limit. `GET /v1/me` has the plan's numbers in `limits`, and each account's sends so far (`limits.sends`: `per_hour`, `per_day`, `used_last_hour`, `used_last_day`). Every answer carries `RateLimit` and `RateLimit-Policy` headers.
 
 ## Plans and billing
 
-Two flat plans, with the same API: reads, sends, events, webhooks, the CLI and MCP, on every connected account. They differ only in limits:
+Two flat plans, with the same API: reads, sends, events, webhooks, the CLI and MCP, on every connected account. They differ in limits and support:
 
 | | Personal | Pro |
 |---|---|---|
-| Price | $19 a month | $49 a month |
-| Transcription a period | 60 minutes | 300 minutes |
-| Active API keys | 5 | 25 |
-| Webhooks | 3 | 10 |
-| Requests, per key and for all of a user's keys together | 5 a second, 300 a minute | 10 a second, 600 a minute |
+| Price | $49 a month | $199 a month |
+| Transcription a period | 600 minutes | 3,000 minutes |
+| Webhooks | 25 | 100 |
+| Requests, per key and for all of a user's keys together | 15 a second, 900 a minute | 30 a second, 1,800 a minute |
+| Live event streams per user | 10 | 25 |
+| Event history | 7 days | 30 days |
+| Support | email | priority email |
+
+Both plans allow up to 100 active API keys: a cap against runaway scripts, not a plan difference, since a user's keys share the request limits.
 
 - Calls are counted, never billed: `plan.calls_this_period` in `GET /v1/me` shows them.
 - `plan` in `GET /v1/me` says which plan it is (`personal` or `pro`), its status and its period, and `limits` has its numbers. Read them rather than assume.

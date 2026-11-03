@@ -27,7 +27,7 @@ The URL is `https://api.chesly.app/mcp`, over Streamable HTTP. It takes the user
 - `network` is one network's name, such as `whatsapp`. Email stays out of `list_chats`, `catch_up` and `search_messages` unless `network` is `email`; an email chat or message is always reachable by its ID.
 - `send_message` follows the REST API's rules: only chats the user has, no message requests, a `reply_to` from that chat (else `invalid_reply_to`), the send limits, and at most once per `idempotency_key`. Pass one, and reuse it if you call again after an unclear failure.
 - A file for `send_message` comes from `POST /v1/media`; the MCP server has no upload tool.
-- `transcribe_voice_note` past the period's minutes answers `transcription_limit_reached`: tell the user they come back next period, or that Pro has 300 minutes. Don't retry.
+- `transcribe_voice_note` past the period's minutes answers `transcription_limit_reached`: tell the user they come back next period, or that Pro has 3,000 minutes. Don't retry.
 
 ## How the tools answer
 

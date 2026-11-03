@@ -156,7 +156,7 @@ const API_NAMES = new Set([
   // Fields: GET /v1/me, its plan (PlanSummary v2) and its limits.
   'api_version', 'requests_per_second', 'requests_per_minute', 'api_keys', 'event_streams', 'per_hour', 'per_day',
   'used_last_hour', 'used_last_day', 'period_start', 'period_end', 'trial_ends_at', 'cancel_at', 'calls_this_period',
-  'transcription_seconds_this_period', 'transcription_seconds_included', 'scheduled_change',
+  'transcription_seconds_this_period', 'transcription_seconds_included', 'scheduled_change', 'event_retention_days',
   // Fields: delivery, events, webhooks and their deliveries, contacts, transcripts, keys and problems.
   'updated_at', 'created_at', 'last_read_message_id', 'event_types', 'disabled_reason', 'failing_since',
   'previous_secret_expires_at', 'delivery_id', 'event_id', 'event_type', 'next_attempt_at', 'last_attempt_at',
@@ -934,7 +934,8 @@ test('the_rest_reference_gives_the_plans_limits_and_the_per_user_ones', () => {
   // R65's per-user limit is the plan's own (R117); the feed-page budget stays.
   const limits = section(apiReference('rest.md'), 'Limits');
   assert.match(limits, /^\| Requests, per key and for all of a user's keys together \| The plan's: `limits\.requests_per_second` and `limits\.requests_per_minute` \|$/m);
-  assert.match(limits, /^\| Active keys \| The plan's: `limits\.api_keys` \|$/m);
+  assert.match(limits, /^\| Active keys \| Up to 100 on both plans \(`limits\.api_keys`\) \|$/m);
+  assert.match(limits, /^\| Live streams \| The plan's: `limits\.event_streams` \|$/m);
   assert.match(limits, /^\| Webhooks \| The plan's: `limits\.webhooks` \|$/m);
   assert.match(limits, /^\| Since-feed pages \(`GET \/v1\/messages\?since=`\) \| 30 a minute, per user \(Wave 2\) \|$/m);
 });
@@ -1181,11 +1182,13 @@ test('a_slow_upload_waits_out_the_hold', () => {
 
 /** The two plans: everything else is the same on both, and calls are counted, never billed. */
 const PLANS = [
-  ['Price', '$19 a month', '$49 a month'],
-  ['Transcription a period', '60 minutes', '300 minutes'],
-  ['Active API keys', '5', '25'],
-  ['Webhooks', '3', '10'],
-  ['Requests, per key and for all of a user\'s keys together', '5 a second, 300 a minute', '10 a second, 600 a minute'],
+  ['Price', '$49 a month', '$199 a month'],
+  ['Transcription a period', '600 minutes', '3,000 minutes'],
+  ['Webhooks', '25', '100'],
+  ['Requests, per key and for all of a user\'s keys together', '15 a second, 900 a minute', '30 a second, 1,800 a minute'],
+  ['Live event streams per user', '10', '25'],
+  ['Event history', '7 days', '30 days'],
+  ['Support', 'email', 'priority email'],
 ];
 
 test('the_plans_are_stated_once_with_their_limits', () => {
@@ -1193,6 +1196,7 @@ test('the_plans_are_stated_once_with_their_limits', () => {
   assert.match(plans, /^\| \| Personal \| Pro \|$/m);
   for (const [what, personal, pro] of PLANS) assert.ok(plans.includes(`| ${what} | ${personal} | ${pro} |`), what);
   assert.match(plans, /[Cc]alls are counted, never billed/);
+  assert.match(plans, /[Bb]oth plans allow up to 100 active API keys/, 'keys are a sanity cap, not a plan difference (R124)');
   assert.match(plans, /`key_limit_reached`[^\n]*`webhook_limit_reached`/, 'a downgrade refuses new ones, deletes none');
   for (const file of [join('skills', 'chesly-api', 'SKILL.md'), join('skills', 'chesly', 'references', 'commands.md')]) {
     assert.match(read(file), /`GET \/v1\/me`|`chesly whoami --json`/, `${file} sends the agent to the plan's limits`);
@@ -1206,8 +1210,8 @@ test('transcription_limit_reached_is_never_retried', () => {
     join('skills', 'chesly-api', 'references', 'mcp.md'), join('skills', 'chesly', 'references', 'recipes.md')]) {
     const lines = read(file).split('\n').filter((candidate) => candidate.includes('`transcription_limit_reached`'));
     assert.ok(lines.length > 0, `${file} names transcription_limit_reached`);
-    assert.ok(lines.some((line) => /next period/.test(line) && /Pro has 300 minutes/.test(line) && /[Dd]on't retry/.test(line)),
-      `${file}: wait for the next period or Pro's 300 minutes, and don't retry`);
+    assert.ok(lines.some((line) => /next period/.test(line) && /Pro has 3,000 minutes/.test(line) && /[Dd]on't retry/.test(line)),
+      `${file}: wait for the next period or Pro's 3,000 minutes, and don't retry`);
   }
 });
 
@@ -1237,5 +1241,26 @@ test('plan_unavailable_is_retried_not_upgraded', () => {
     assert.match(line, retry);
     assert.match(line, /try again once or twice/);
     assert.match(line, /[Dd]on't tell the user to upgrade/);
+  }
+});
+
+test('event_history_and_streams_follow_the_plan', () => {
+  // R124: events are kept 7 or 30 days, and a user keeps 10 or 25 streams, by plan; GET /v1/me has both.
+  for (const file of copyFiles()) {
+    assert.doesNotMatch(read(file), /\b4 days\b|\b5 streams\b|5 open at once|a sixth (?:exits|is)/, `${file}: retention and streams are the plan's`);
+  }
+  for (const file of [apiReference('events-and-webhooks.md'), read(join('skills', 'chesly', 'references', 'commands.md'))]) {
+    assert.match(file, /`limits\.event_retention_days`/);
+    assert.match(file, /`limits\.event_streams`/);
+  }
+  assert.match(apiReference('events-and-webhooks.md'), /7 days on Personal, 30 on Pro/);
+});
+
+test('a_rate_limit_sample_quotes_a_real_limit', () => {
+  // The 429 samples quote a per-minute limit; it must be a plan's (R124: 900 Personal, 1,800 Pro).
+  for (const file of copyFiles()) {
+    for (const [, limit] of read(file).matchAll(/more than ([\d,]+) requests in one minute/g)) {
+      assert.ok(['900', '1,800', '1800'].includes(limit), `${file}: ${limit} a minute is no plan's limit`);
+    }
   }
 });
