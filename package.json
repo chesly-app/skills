@@ -1,6 +1,7 @@
 {
   "name": "chesly-skills",
   "private": true,
+  "license": "MIT",
   "description": "The Chesly agent skills and Claude Code plugin. package.json only runs the repo's checks.",
   "type": "module",
   "engines": {

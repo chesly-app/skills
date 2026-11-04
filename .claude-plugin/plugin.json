@@ -2,6 +2,7 @@
   "name": "chesly",
   "displayName": "Chesly",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Your chats, as an API: read, search, watch and answer your messages across the networks you connected in Chesly.",
   "author": {
     "name": "Chesly",

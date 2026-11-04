@@ -46,3 +46,7 @@ The plugin brings both skills and the Chesly MCP server. Claude Code asks for yo
 ---
 
 Chesly is an independent product of Chesly, Inc. It is not affiliated with, endorsed by, or sponsored by any messaging service it works with. Product names are trademarks of their respective owners and are used only to describe compatibility. iMessage is a trademark of Apple Inc., registered in the U.S. and other countries and regions.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

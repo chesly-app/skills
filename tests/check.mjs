@@ -1013,6 +1013,7 @@ test('the_plugin_manifest_has_the_planned_values', () => {
     name: 'chesly',
     displayName: 'Chesly',
     version: '0.1.0',
+    license: 'MIT',
     description: 'Your chats, as an API: read, search, watch and answer your messages across the networks you connected in Chesly.',
     author: { name: 'Chesly', url: 'https://agents.chesly.app' },
     homepage: 'https://agents.chesly.app',
