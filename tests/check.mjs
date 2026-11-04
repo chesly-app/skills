@@ -1190,7 +1190,7 @@ const PLANS = [
   ['Live event streams per user', '10', '25'],
   ['Event history', '7 days', '30 days'],
   ['Support', 'email', 'priority email'],
-  ['Chesly Plus', 'included', 'included'],
+  ['Includes', 'Chesly Plus', 'Chesly Max'],
   ['Connected accounts (app caps)', '10, up to 3 per app (Plus\'s)', '50, up to 10 per app'],
 ];
 
@@ -1266,4 +1266,12 @@ test('a_rate_limit_sample_quotes_a_real_limit', () => {
       assert.ok(['900', '1,800', '1800'].includes(limit), `${file}: ${limit} a minute is no plan's limit`);
     }
   }
+});
+
+test('the_mcp_server_is_described_as_hosted', () => {
+  // R128: Chesly hosts the MCP server; the agent runs nothing for it. Its URL stays MCP_URL.
+  const row = skillMd('chesly-api').split('\n').find((line) => line.includes('speaks MCP'));
+  assert.match(row, new RegExp(`hosted MCP server at \`${MCP_URL}\``), 'the way-in table');
+  assert.match(apiReference('mcp.md'), /^Chesly hosts the MCP server, so there is nothing to install or run/m);
+  assert.match(read('README.md'), /the hosted Chesly MCP server/);
 });

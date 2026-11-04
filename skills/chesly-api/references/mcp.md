@@ -1,6 +1,6 @@
 # The MCP server
 
-The URL is `https://api.chesly.app/mcp`, over Streamable HTTP. It takes the user's API key as a bearer token: `Authorization: Bearer ck_live_…`. Rows marked (Wave 2) arrive with the API's second wave.
+Chesly hosts the MCP server, so there is nothing to install or run: the URL is `https://api.chesly.app/mcp`, over Streamable HTTP. It takes the user's API key as a bearer token: `Authorization: Bearer ck_live_…`. Rows marked (Wave 2) arrive with the API's second wave.
 
 ## Contents
 

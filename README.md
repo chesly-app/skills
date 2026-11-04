@@ -35,7 +35,7 @@ In Claude Code:
 /plugin install chesly@chesly
 ```
 
-The plugin brings both skills and the Chesly MCP server. Claude Code asks for your API key once and keeps it in your system's credential store: run `chesly key --reveal` to print the key the CLI uses, or make one at [web.chesly.app/api/keys](https://web.chesly.app/api/keys). `/mcp` then lists the Chesly server.
+The plugin brings both skills and the hosted Chesly MCP server. Claude Code asks for your API key once and keeps it in your system's credential store: run `chesly key --reveal` to print the key the CLI uses, or make one at [web.chesly.app/api/keys](https://web.chesly.app/api/keys). `/mcp` then lists the Chesly server.
 
 ## Development
 
