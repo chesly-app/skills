@@ -1190,6 +1190,8 @@ const PLANS = [
   ['Live event streams per user', '10', '25'],
   ['Event history', '7 days', '30 days'],
   ['Support', 'email', 'priority email'],
+  ['Chesly Plus', 'included', 'included'],
+  ['Connected accounts (app caps)', '10, up to 3 per app (Plus\'s)', '50, up to 10 per app'],
 ];
 
 test('the_plans_are_stated_once_with_their_limits', () => {

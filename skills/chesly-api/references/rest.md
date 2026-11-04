@@ -197,6 +197,8 @@ Two flat plans, with the same API: reads, sends, events, webhooks, the CLI and M
 | Live event streams per user | 10 | 25 |
 | Event history | 7 days | 30 days |
 | Support | email | priority email |
+| Chesly Plus | included | included |
+| Connected accounts (app caps) | 10, up to 3 per app (Plus's) | 50, up to 10 per app |
 
 Both plans allow up to 100 active API keys: a cap against runaway scripts, not a plan difference, since a user's keys share the request limits.
 
