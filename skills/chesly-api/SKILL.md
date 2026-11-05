@@ -13,7 +13,7 @@ The Chesly API gives code and agents the user's own messages: the accounts they 
 |---|---|---|
 | Your own code: scripts, backends, jobs | REST at `https://api.chesly.app/v1` | [references/rest.md](references/rest.md) |
 | React to new messages as they arrive | Signed webhooks, a live stream (SSE) or a feed to poll | [references/events-and-webhooks.md](references/events-and-webhooks.md) |
-| An agent or app that speaks MCP | The hosted MCP server at `https://api.chesly.app/mcp`: nothing to run | [references/mcp.md](references/mcp.md) |
+| An agent or app that speaks MCP | The hosted MCP server at `https://mcp.chesly.app/mcp`: nothing to run | [references/mcp.md](references/mcp.md) |
 | An agent that runs shell commands | The `chesly` CLI | the `chesly` skill |
 
 A first call:

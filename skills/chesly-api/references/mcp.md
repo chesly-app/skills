@@ -1,6 +1,6 @@
 # The MCP server
 
-Chesly hosts the MCP server, so there is nothing to install or run: the URL is `https://api.chesly.app/mcp`, over Streamable HTTP. It takes the user's API key as a bearer token: `Authorization: Bearer ck_live_…`. Rows marked (Wave 2) arrive with the API's second wave.
+Chesly hosts the MCP server, so there is nothing to install or run: the URL is `https://mcp.chesly.app/mcp`, over Streamable HTTP. The old URL `https://api.chesly.app/mcp` still works. It takes the user's API key as a bearer token: `Authorization: Bearer ck_live_…`. Rows marked (Wave 2) arrive with the API's second wave.
 
 ## Contents
 
@@ -44,7 +44,7 @@ The key: `$(chesly key --reveal)` hands over the one the CLI signed in with, as 
 ### Claude Code
 
 ```bash
-claude mcp add --transport http chesly https://api.chesly.app/mcp --header "Authorization: Bearer $(chesly key --reveal)"
+claude mcp add --transport http chesly https://mcp.chesly.app/mcp --header "Authorization: Bearer $(chesly key --reveal)"
 ```
 
 Add `--scope user` to have it in every project. Or install the Chesly plugin, which brings this server and both skills, and asks for the key once: `/plugin marketplace add chesly-app/skills`, then `/plugin install chesly@chesly`.
@@ -55,7 +55,7 @@ In `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.chesly]
-url = "https://api.chesly.app/mcp"
+url = "https://mcp.chesly.app/mcp"
 bearer_token_env_var = "CHESLY_API_KEY"
 ```
 
@@ -67,7 +67,7 @@ In `~/.cursor/mcp.json`, or `.cursor/mcp.json` in a project:
 {
   "mcpServers": {
     "chesly": {
-      "url": "https://api.chesly.app/mcp",
+      "url": "https://mcp.chesly.app/mcp",
       "headers": { "Authorization": "Bearer ${env:CHESLY_API_KEY}" }
     }
   }
@@ -87,7 +87,7 @@ response = client.responses.create(
     tools=[{
         "type": "mcp",
         "server_label": "chesly",
-        "server_url": "https://api.chesly.app/mcp",
+        "server_url": "https://mcp.chesly.app/mcp",
         "authorization": os.environ["CHESLY_API_KEY"],
         "allowed_tools": ["catch_up", "read_chat", "search_messages"],
         "require_approval": "never",
@@ -103,7 +103,7 @@ print(response.output_text)
 ### OpenClaw
 
 ```bash
-openclaw mcp set chesly '{"url":"https://api.chesly.app/mcp","transport":"streamable-http","headers":{"Authorization":"Bearer ${CHESLY_API_KEY}"}}'
+openclaw mcp set chesly '{"url":"https://mcp.chesly.app/mcp","transport":"streamable-http","headers":{"Authorization":"Bearer ${CHESLY_API_KEY}"}}'
 ```
 
 OpenClaw fills `${CHESLY_API_KEY}` from its gateway's environment, so the key stays out of its config. OpenClaw also runs commands, so the `chesly` CLI works there too.
@@ -112,7 +112,7 @@ OpenClaw fills `${CHESLY_API_KEY}` from its gateway's environment, so the key st
 
 Give an AI Agent node an MCP Client Tool node:
 
-- Endpoint: `https://api.chesly.app/mcp`
+- Endpoint: `https://mcp.chesly.app/mcp`
 - Server Transport: HTTP Streamable
 - Authentication: Bearer Auth, with the API key
 - Tools to Include: All

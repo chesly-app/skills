@@ -182,8 +182,9 @@ const API_NAMES = new Set([
   'server_label', 'server_url', 'allowed_tools', 'require_approval', 'bearer_token_env_var', 'mcp_servers',
 ]);
 
-/** The MCP server's one URL in this repo, until the mcp.chesly.app name is live. */
-const MCP_URL = 'https://api.chesly.app/mcp';
+/** The MCP server's URL, live since G3. The old one still works, and the skills say so once. */
+const MCP_URL = 'https://mcp.chesly.app/mcp';
+const OLD_MCP_URL = 'https://api.chesly.app/mcp';
 
 const SKILLS = {
   chesly: {
@@ -755,11 +756,20 @@ test('every_event_type_is_in_the_catalog', () => {
   assert.deepEqual(markdownFiles().flatMap((file) => eventTypeProblems(read(file)).map((problem) => `${file}: ${problem}`)), []);
 });
 
-test('the_mcp_url_is_one_value', () => {
+test('the_mcp_url_is_mcp_chesly_app', () => {
+  const old = [];
   for (const file of copyFiles()) {
-    const text = read(file);
-    for (const [url] of text.matchAll(/https?:\/\/[\w.-]*chesly\.app\/mcp\b/g)) assert.equal(url, MCP_URL, file);
-    assert.doesNotMatch(text, /mcp\.chesly\.app/, `${file}: the MCP server is at ${MCP_URL} until mcp.chesly.app is live`);
+    for (const [url] of read(file).matchAll(/https?:\/\/[\w.-]*chesly\.app\/mcp\b/g)) {
+      if (url === OLD_MCP_URL) old.push(file);
+      else assert.equal(url, MCP_URL, file);
+    }
+  }
+  // api.chesly.app/mcp still works: one note says so, and nothing else gives it.
+  assert.deepEqual(old, [join('skills', 'chesly-api', 'references', 'mcp.md')], 'the old URL appears once, in its note');
+  assert.match(read(join('skills', 'chesly-api', 'references', 'mcp.md')), new RegExp(`\`${OLD_MCP_URL}\` still works`));
+  assert.equal(JSON.parse(read('.mcp.json')).mcpServers.chesly.url, MCP_URL);
+  for (const file of [join('skills', 'chesly-api', 'SKILL.md'), join('skills', 'chesly-api', 'references', 'mcp.md')]) {
+    assert.ok(read(file).includes(MCP_URL), `${file} gives ${MCP_URL}`);
   }
 });
 
