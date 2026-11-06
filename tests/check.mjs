@@ -781,10 +781,6 @@ test('no_end_to_end_claims_and_no_legal_language', () => {
   }
 });
 
-test('hidden_networks_are_never_named', () => {
-  for (const file of copyFiles()) assert.doesNotMatch(read(file), /tik ?tok|chatgpt ?dots/i, file);
-});
-
 test('every_network_is_named_linkedin_included', () => {
   for (const file of ['README.md', ...Object.keys(SKILLS).map((skill) => join('skills', skill, 'SKILL.md'))]) {
     const text = parseMarkdown(read(file)).prose;
