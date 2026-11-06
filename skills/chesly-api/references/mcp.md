@@ -39,6 +39,14 @@ Chesly hosts the MCP server, so there is nothing to install or run: the URL is `
 
 ## Setup
 
+Two ways in. Claude, Claude Code and other clients with MCP's OAuth sign in with the user's Chesly account: add the URL and they sign in on a Chesly page, with no key to paste, and the page offers a plan if they have none. Anything else sends a key as a bearer token. A signed-in app is listed under Connected apps at https://web.chesly.app/api/keys, where Disconnect signs it out at once.
+
+### Claude
+
+The user follows [this link](https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Chesly&connectorUrl=https%3A%2F%2Fmcp.chesly.app%2Fmcp), which opens Claude's connector dialog with Chesly filled in, confirms it and signs in. It takes no key.
+
+### With a key
+
 The key: `$(chesly key --reveal)` hands over the one the CLI signed in with, as in the Claude Code line below, or the user makes one at https://web.chesly.app/api/keys. Keep it in `CHESLY_API_KEY` rather than in a config file you might commit. When the CLI's key is revoked (`chesly logout`, `chesly login --force`), a server set up with it stops working: set it up again with the new key.
 
 ### Claude Code
@@ -46,6 +54,8 @@ The key: `$(chesly key --reveal)` hands over the one the CLI signed in with, as 
 ```bash
 claude mcp add --transport http chesly https://mcp.chesly.app/mcp --header "Authorization: Bearer $(chesly key --reveal)"
 ```
+
+Or with no key: leave `--header` out, then run `/mcp` in Claude Code and sign in with Chesly.
 
 Add `--scope user` to have it in every project. Or install the Chesly plugin, which brings this server and both skills, and asks for the key once: `/plugin marketplace add chesly-app/skills`, then `/plugin install chesly@chesly`.
 
