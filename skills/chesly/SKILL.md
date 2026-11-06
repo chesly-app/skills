@@ -5,7 +5,7 @@ description: "Read, search, watch and reply to the user's own messages across th
 
 # Chesly
 
-Chesly gives you the user's own messages on WhatsApp, iMessage, Instagram, Messenger, Telegram, Signal, Discord, Slack, LinkedIn, X, Google Messages, Google Chat, Reddit and email. The user connects those accounts once in the Chesly app, and you read and answer them with the `chesly` command-line tool. Chesly is hosted, so the CLI is all that runs on this computer.
+Chesly gives you the user's own messages on WhatsApp, iMessage, Instagram, Messenger, Telegram, Signal, LINE, Discord, Slack, LinkedIn, X, Reddit, Google Messages, Google Chat, Grok Bot, OpenAI Dots, Muse and email. The user connects those accounts once in the Chesly app, and you read and answer them with the `chesly` command-line tool. Chesly is hosted, so the CLI is all that runs on this computer.
 
 ## Setup
 

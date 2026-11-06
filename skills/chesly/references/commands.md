@@ -136,7 +136,7 @@ New keys come from `chesly login`, or from https://web.chesly.app/api/keys. `key
 
 ## Network names
 
-`--network` and `--networks` take the API's names: `whatsapp`, `imessage`, `instagram`, `messenger`, `telegram`, `signal`, `discord`, `slack`, `linkedin`, `twitter` (X), `gmessages` (Google Messages), `googlechat` (Google Chat), `reddit` and `email`.
+`--network` and `--networks` take the API's names: `whatsapp`, `imessage`, `instagram`, `messenger`, `telegram`, `signal`, `line`, `discord`, `slack`, `linkedin`, `twitter` (X), `reddit`, `gmessages` (Google Messages), `googlechat` (Google Chat), `grokbot` (Grok Bot), `chatgptdots` (OpenAI Dots), `muse` and `email`. `tiktok` and `wechat` are coming soon: only accounts that can connect them have chats there.
 
 ## Exit codes
 

@@ -1,6 +1,6 @@
 # Chesly skills
 
-Agent skills for [Chesly](https://agents.chesly.app). With them, your agent reads, searches, watches and answers your messages on WhatsApp, iMessage, Instagram, Messenger, Telegram, Signal, Discord, Slack, LinkedIn, X, Google Messages, Google Chat, Reddit and email: the accounts you connected in the Chesly app.
+Agent skills for [Chesly](https://agents.chesly.app). With them, your agent reads, searches, watches and answers your messages on WhatsApp, iMessage, Instagram, Messenger, Telegram, Signal, LINE, Discord, Slack, LinkedIn, X, Reddit, Google Messages, Google Chat, Grok Bot, OpenAI Dots, Muse and email: the accounts you connected in the Chesly app.
 
 | Skill | What your agent learns |
 |---|---|

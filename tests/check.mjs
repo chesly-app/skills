@@ -77,11 +77,11 @@ const CLI_ERROR_CODES = ['access_denied', 'ambiguous_chat', 'chat_not_found', 'c
 const CLI_WARNING_CODES = ['delivery_wait_failed', 'env_key_set', 'event_too_large', 'events_expired', 'invalid_event',
   'key_details_unavailable', 'key_still_active', 'reconnecting'];
 
-/** The networks, as people name them and as the API does (`network`, `--network`). */
-const NETWORK_NAMES = ['WhatsApp', 'iMessage', 'Instagram', 'Messenger', 'Telegram', 'Signal', 'Discord', 'Slack',
-  'LinkedIn', 'X', 'Google Messages', 'Google Chat', 'Reddit', 'email'];
-const NETWORK_IDS = ['whatsapp', 'imessage', 'instagram', 'messenger', 'telegram', 'signal', 'discord', 'slack',
-  'linkedin', 'twitter', 'gmessages', 'googlechat', 'reddit', 'email'];
+/** The networks, as people name them and as the API does (`network`, `--network`); the references add the two coming soon. */
+const NETWORK_NAMES = ['WhatsApp', 'iMessage', 'Instagram', 'Messenger', 'Telegram', 'Signal', 'LINE', 'Discord', 'Slack',
+  'LinkedIn', 'X', 'Reddit', 'Google Messages', 'Google Chat', 'Grok Bot', 'OpenAI Dots', 'Muse', 'email'];
+const NETWORK_IDS = ['whatsapp', 'imessage', 'instagram', 'messenger', 'telegram', 'signal', 'line', 'discord', 'slack',
+  'linkedin', 'twitter', 'reddit', 'gmessages', 'googlechat', 'grokbot', 'chatgptdots', 'muse', 'tiktok', 'wechat', 'email'];
 
 /** The REST API's endpoints, each with the wave that brings it. */
 const ENDPOINTS = {

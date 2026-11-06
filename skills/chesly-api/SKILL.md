@@ -5,7 +5,7 @@ description: "Build with the Chesly API: REST at https://api.chesly.app/v1, live
 
 # Chesly API
 
-The Chesly API gives code and agents the user's own messages: the accounts they connected in the Chesly app on WhatsApp, iMessage, Instagram, Messenger, Telegram, Signal, Discord, Slack, LinkedIn, X, Google Messages, Google Chat, Reddit and email. It is hosted and always on, so nothing has to run on the user's side.
+The Chesly API gives code and agents the user's own messages: the accounts they connected in the Chesly app on WhatsApp, iMessage, Instagram, Messenger, Telegram, Signal, LINE, Discord, Slack, LinkedIn, X, Reddit, Google Messages, Google Chat, Grok Bot, OpenAI Dots, Muse and email. It is hosted and always on, so nothing has to run on the user's side.
 
 ## Pick a way in
 

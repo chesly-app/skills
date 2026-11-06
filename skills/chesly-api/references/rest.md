@@ -67,7 +67,7 @@ A chat has `id`, `account_id`, `network`, `name`, `type` (`dm` or `group`), `unr
 
 ## Filters, networks and email (Wave 2)
 
-- `network` keeps `GET /v1/chats`, `GET /v1/catch_up`, `GET /v1/messages?since=` and `GET /v1/messages/search` to one network. The names: `whatsapp`, `imessage`, `instagram`, `messenger`, `telegram`, `signal`, `discord`, `slack`, `linkedin`, `twitter` (X), `gmessages` (Google Messages), `googlechat` (Google Chat), `reddit` and `email`.
+- `network` keeps `GET /v1/chats`, `GET /v1/catch_up`, `GET /v1/messages?since=` and `GET /v1/messages/search` to one network. The names: `whatsapp`, `imessage`, `instagram`, `messenger`, `telegram`, `signal`, `line`, `discord`, `slack`, `linkedin`, `twitter` (X), `reddit`, `gmessages` (Google Messages), `googlechat` (Google Chat), `grokbot` (Grok Bot), `chatgptdots` (OpenAI Dots), `muse` and `email`. `tiktok` and `wechat` are coming soon: only accounts that can connect them have chats there.
 - Email is opt-in: those lists leave it out unless `network=email`, or `account_id` names an email account. An email chat or message is always reachable by its ID. An email read answers `409` `account_reconnect_required` when its account needs the user to reconnect it in the Chesly app. Don't retry. An email thread's `name` is its subject, and an email message also has `email` (`subject`, `from`, `to`, `cc`).
 - `updated_since` on `GET /v1/chats` keeps the chats whose `last_message_at` is at or after it.
 - `before` and `after` on `GET /v1/chats/{chat_id}/messages` keep the messages sent before or after those times, still newest first.
