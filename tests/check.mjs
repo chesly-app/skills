@@ -1281,3 +1281,14 @@ test('the_mcp_server_is_described_as_hosted', () => {
   assert.match(apiReference('mcp.md'), /^Chesly hosts the MCP server, so there is nothing to install or run/m);
   assert.match(read('README.md'), /the hosted Chesly MCP server/);
 });
+
+test('the_mcp_reference_says_how_to_add_chesly_to_chatgpt', () => {
+  // ChatGPT has no install link for a custom MCP server (developers.openai.com/plugins/deploy/connect-chatgpt).
+  const mcp = apiReference('mcp.md');
+  const chatgpt = mcp.slice(mcp.indexOf('### ChatGPT'), mcp.indexOf('### With a key'));
+  assert.ok(mcp.indexOf('### ChatGPT') > mcp.indexOf('### Claude'), 'a ChatGPT part, after Claude');
+  for (const words of ['https://chatgpt.com/plugins', 'Add custom MCP server', '`https://mcp.chesly.app/mcp`', 'OAuth', 'Create as a plugin']) {
+    assert.ok(chatgpt.includes(words), `the ChatGPT part lacks ${words}`);
+  }
+  assert.match(mcp, /Two ways in\. Claude, ChatGPT, Claude Code/);
+});

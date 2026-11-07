@@ -39,11 +39,15 @@ Chesly hosts the MCP server, so there is nothing to install or run: the URL is `
 
 ## Setup
 
-Two ways in. Claude, Claude Code and other clients with MCP's OAuth sign in with the user's Chesly account: add the URL and they sign in on a Chesly page, with no key to paste, and the page offers a plan if they have none. Anything else sends a key as a bearer token. A signed-in app is listed under Connected apps at https://web.chesly.app/api/keys, where Disconnect signs it out at once.
+Two ways in. Claude, ChatGPT, Claude Code and other clients with MCP's OAuth sign in with the user's Chesly account: add the URL and they sign in on a Chesly page, with no key to paste, and the page offers a plan if they have none. Anything else sends a key as a bearer token. A signed-in app is listed under Connected apps at https://web.chesly.app/api/keys, where Disconnect signs it out at once.
 
 ### Claude
 
 The user follows [this link](https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Chesly&connectorUrl=https%3A%2F%2Fmcp.chesly.app%2Fmcp), which opens Claude's connector dialog with Chesly filled in, confirms it and signs in. It takes no key.
+
+### ChatGPT
+
+ChatGPT has no install link. The user opens https://chatgpt.com/plugins, chooses + and Add custom MCP server, names it Chesly with `https://mcp.chesly.app/mcp` as the server URL and OAuth as the authentication, chooses Create as a plugin and signs in with Chesly. In a chat, they type `@` and pick Chesly. Without Add custom MCP server, developer mode is off in ChatGPT's settings, or a workspace admin hasn't allowed it. It takes no key.
 
 ### With a key
 
