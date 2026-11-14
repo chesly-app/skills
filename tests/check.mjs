@@ -20,7 +20,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
  * The chesly CLI's commands and options. Each carries the wave that brings it: 1 is the alpha,
- * 2 is the API's Wave 2 (CLI 0.2). A command's own wave also covers a change in what it does:
+ * 2 is the API's Wave 2 (CLI 0.2), and 3 is CLI 0.3 (edit and delete), whose rows the command
+ * reference marks (chesly 0.3.0 or later). A command's own wave also covers a change in what it does:
  * `logout` revokes its key from Wave 2 on, and `--key` reads the key from stdin (`--key -`), the
  * only form a skill shows. Every command also takes GLOBAL_OPTIONS.
  */
@@ -38,6 +39,8 @@ const CLI = {
     wave: 2,
     options: { '--reply-to': 2, '--file': 2, '--media-id': 2, '--wait': 2, '--idempotency-key': 2, '--network': 2 },
   },
+  edit: { wave: 3, options: {} },
+  delete: { wave: 3, options: {} },
   watch: { wave: 2, options: { '--chat': 2, '--account': 2, '--types': 2, '--networks': 2, '--after': 2 } },
   webhooks: {
     wave: 2,
@@ -63,7 +66,7 @@ const EXIT_CODES = [
   '| 1 | error |',
   '| 2 | usage |',
   '| 3 | not signed in (no key, a malformed one, or the key was rejected) |',
-  '| 4 | not found (an unknown chat, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |',
+  '| 4 | not found (an unknown chat, message, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |',
   '| 5 | not final, come back to it: rate limited (a 429: too many requests, a send cap, uploads held after a slow one, or too many open event streams), a request that took too long to arrive (a 408, such as an upload\'s `upload_timeout`), briefly unavailable (a 502, 503 or 504, from the API or a gateway), a first attempt still running (a 409 `idempotency_in_progress`), or a send the network didn\'t confirm (`delivery_unconfirmed`: check the chat before you send it again). `retry_after` says when, if the answer has it |',
   '| 6 | payment required: the account needs an API plan, or this period\'s transcription minutes are used up |',
 ];
@@ -83,7 +86,10 @@ const NETWORK_NAMES = ['WhatsApp', 'iMessage', 'Instagram', 'Messenger', 'Telegr
 const NETWORK_IDS = ['whatsapp', 'imessage', 'instagram', 'messenger', 'telegram', 'signal', 'line', 'discord', 'slack',
   'linkedin', 'twitter', 'reddit', 'gmessages', 'googlechat', 'grokbot', 'chatgptdots', 'muse', 'tiktok', 'wechat', 'email'];
 
-/** The REST API's endpoints, each with the wave that brings it. */
+/**
+ * The REST API's endpoints, each with the wave that brings it. 3 is editing and deleting a message
+ * the user sent (2026-11-15), which the API reference doesn't mark.
+ */
 const ENDPOINTS = {
   'GET /v1/me': 1,
   'GET /v1/accounts': 1,
@@ -94,6 +100,8 @@ const ENDPOINTS = {
   'GET /v1/messages': 1,
   'GET /v1/messages/search': 1,
   'GET /v1/messages/{message_id}': 1,
+  'PATCH /v1/messages/{message_id}': 3,
+  'DELETE /v1/messages/{message_id}': 3,
   'GET /v1/catch_up': 1,
   'GET /v1/media/{media_id}': 1,
   'POST /v1/media': 2,
@@ -115,7 +123,7 @@ const ENDPOINTS = {
   'GET /v1/openapi.json': 2,
 };
 
-/** The MCP server's tools: the wave that brings each, and whether a read-only key sees it. */
+/** The MCP server's tools: the wave that brings each (3, unmarked, as for ENDPOINTS), and whether a read-only key sees it. */
 const TOOLS = {
   list_accounts: { wave: 1, readKey: true },
   list_chats: { wave: 1, readKey: true },
@@ -127,13 +135,15 @@ const TOOLS = {
   send_message: { wave: 2, readKey: false },
   find_contact: { wave: 2, readKey: true },
   transcribe_voice_note: { wave: 2, readKey: false },
+  edit_message: { wave: 3, readKey: false },
+  delete_message: { wave: 3, readKey: false },
 };
 /** The tools that take a `network` input (Wave 2). */
 const NETWORK_INPUT_TOOLS = ['list_chats', 'catch_up', 'search_messages'];
 /** Older endpoints and tools whose answers Wave 2 extends: `GET /v1/me`'s plan and send limits, a message's `delivery`. */
 const WAVE_2_CONTENT = ['GET /v1/me', 'GET /v1/messages/{message_id}', 'get_message'];
 /** The verbs a tool name starts with: a name shaped like one that isn't a tool is a wrong tool name. */
-const TOOL_SHAPE = /^(list|get|send|search|read|mark|find|transcribe|catch|create|update|delete|upload|fetch|watch|reply|add|remove)_[a-z_]+$/;
+const TOOL_SHAPE = /^(list|get|send|search|read|mark|find|transcribe|catch|create|update|edit|delete|upload|fetch|watch|reply|add|remove)_[a-z_]+$/;
 
 /** The event catalog. */
 const EVENT_TYPES = ['message.received', 'message.sent', 'message.edited', 'message.deleted', 'message.delivery_failed',
@@ -175,7 +185,7 @@ const API_NAMES = new Set([
   'webhook_not_found', 'webhook_limit_reached', 'invalid_webhook_url', 'not_a_voice_note', 'transcription_unavailable',
   'key_not_found', 'key_limit_reached', 'api_plan_required', 'transcription_limit_reached', 'plan_unavailable',
   'already_subscribed', 'terms_changed', 'email_send_failed', 'account_reconnect_required', 'api_paused',
-  'payload_too_large', 'upload_timeout',
+  'payload_too_large', 'upload_timeout', 'message_not_editable', 'message_not_deletable',
   // Error and warning codes: the CLI's own, and a failed delivery's.
   ...CLI_ERROR_CODES, ...CLI_WARNING_CODES, 'network_rejected', 'not_logged_in', 'rate_limited_by_network',
   // Other clients' settings: OpenAI's Responses API and Codex.
@@ -484,16 +494,19 @@ function curlRequests(code) {
     });
 }
 
+/** The requests that carry a message's text: a send, and an edit. */
+const TEXT_REQUESTS = ['POST /v1/chats/{}/messages', 'PATCH /v1/messages/{}'];
+
 /**
- * How a piece of shell gives a send its text, where the shell could rewrite it (R74): as an argument,
- * from a pipe or an unquoted heredoc, or in a curl body on the command line. The text reaches a send
- * only through a quoted heredoc (`<<'EOF'`) or a file: inside double quotes, `$20` becomes `0`, and
- * backticks or `$(…)` copied from a message run.
+ * How a piece of shell gives a send or an edit its text, where the shell could rewrite it (R74): as
+ * an argument, from a pipe or an unquoted heredoc, or in a curl body on the command line. The text
+ * reaches a send or an edit only through a quoted heredoc (`<<'EOF'`) or a file: inside double
+ * quotes, `$20` becomes `0`, and backticks or `$(…)` copied from a message run.
  */
 function sendTextProblems(code) {
   const problems = [];
   for (const { words, stdin } of cheslyCommands(code)) {
-    if (words[0] !== 'send') continue;
+    if (words[0] !== 'send' && words[0] !== 'edit') continue;
     const [, text] = positionals(words);
     const command = `chesly ${words.join(' ')}`;
     if (text !== undefined && text !== '-') problems.push(`${command}: the text is an argument; pass - and a quoted heredoc`);
@@ -502,7 +515,7 @@ function sendTextProblems(code) {
     }
   }
   for (const [method, path, line] of curlRequests(code)) {
-    if (endpointKey(method, path) !== 'POST /v1/chats/{}/messages') continue;
+    if (!TEXT_REQUESTS.includes(endpointKey(method, path))) continue;
     const body = /\s(?:-d|--data[\w-]*|--json) +(\S+)/.exec(line)?.[1];
     const fromHeredoc = body === '@-' && /<<-?[ \t]*['"]/.test(line);
     const fromFile = body !== undefined && body.startsWith('@') && body !== '@-';
@@ -536,7 +549,7 @@ function toolProblems(markdown) {
   const quoted = blocks.flatMap((block) => [...block.matchAll(/["']([a-z_]+)["']/g)].map((match) => match[1]));
   return [...inline, ...quoted]
     .filter((name) => TOOL_SHAPE.test(name) && !(name in TOOLS) && !API_NAMES.has(name))
-    .map((name) => `${name} is not one of the 10 tools`);
+    .map((name) => `${name} is not one of the ${Object.keys(TOOLS).length} tools`);
 }
 
 const SNAKE_NAME = /(?<![\w$-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w-])/g;
@@ -604,9 +617,11 @@ test('the_endpoint_check_finds_paths_methods_and_requests_the_api_lacks', () => 
 
 test('the_tool_name_and_event_checks_find_what_the_api_lacks', () => {
   assert.deepEqual(toolProblems('`send_message`, `catch_up`, `send_limit_reached` and `"allowed_tools": ["read_chat"]`'), []);
-  assert.deepEqual(toolProblems('`send_messages`\n```json\n{"allowed_tools": ["list_contacts"]}\n```'), [
-    'send_messages is not one of the 10 tools',
-    'list_contacts is not one of the 10 tools',
+  assert.deepEqual(toolProblems('`edit_message`, `delete_message` and `message_not_editable`'), []);
+  assert.deepEqual(toolProblems('`send_messages`, `edit_text`\n```json\n{"allowed_tools": ["list_contacts"]}\n```'), [
+    'send_messages is not one of the 12 tools',
+    'edit_text is not one of the 12 tools',
+    'list_contacts is not one of the 12 tools',
   ]);
   assert.deepEqual(nameProblems('`next_cursor`, `data.message.sender.is_me`, `--reply-to <msg_id>`, `CHESLY_API_KEY`'), []);
   assert.deepEqual(nameProblems('`message.delivery_failed` and `account.needs_attention` are event types'), []);
@@ -634,9 +649,12 @@ test('the_send_check_reads_heredocs_files_and_pipes', () => {
   assert.deepEqual(sendTextProblems('chesly send "Mom" - --json < reply.txt'), []);
   assert.deepEqual(sendTextProblems('chesly send chat_1 --file report.pdf --wait --json'), [], 'a file alone has no text');
   assert.deepEqual(sendTextProblems("curl https://api.chesly.app/v1/chats/chat_1/messages \\\n  --data-binary @- <<'EOF'\n{\"text\": \"hi\"}\nEOF"), []);
+  assert.deepEqual(sendTextProblems("chesly edit <msg_id> - --json <<'EOF'\nIt's $20\nEOF\nchesly delete <msg_id> --json"), []);
+  assert.deepEqual(sendTextProblems("curl -X PATCH https://api.chesly.app/v1/messages/msg_1 \\\n  --data-binary @- <<'EOF'\n{\"text\": \"hi\"}\nEOF"), []);
   for (const code of ['chesly send "Mom" "On my way $20" --json', 'chesly send "Mom" --json -- "-5 degrees"',
     'chesly send chat_1 - --json <<EOF\nhi\nEOF', 'printf "%s" "$TEXT" | chesly send chat_1 - --json',
-    `curl https://api.chesly.app/v1/chats/chat_1/messages -d '{"text": "hi"}'`]) {
+    `curl https://api.chesly.app/v1/chats/chat_1/messages -d '{"text": "hi"}'`, 'chesly edit msg_1 "fixed $20" --json',
+    `curl -X PATCH https://api.chesly.app/v1/messages/msg_1 -d '{"text": "hi"}'`]) {
     assert.equal(sendTextProblems(code).length, 1, code);
   }
 });
@@ -726,7 +744,7 @@ test('no_command_puts_a_key_on_the_command_line', () => {
   }
 });
 
-test('every_send_reads_its_text_from_a_quoted_heredoc_or_a_file', () => {
+test('every_send_and_edit_reads_its_text_from_a_quoted_heredoc_or_a_file', () => {
   const problems = markdownFiles().flatMap((file) =>
     codeOf(read(file)).flatMap((code) => sendTextProblems(code).map((problem) => `${file}: ${problem}`)));
   assert.deepEqual(problems, []);
@@ -744,7 +762,7 @@ test('every_endpoint_named_is_the_apis', () => {
   assert.deepEqual(markdownFiles().flatMap((file) => endpointProblems(read(file)).map((problem) => `${file}: ${problem}`)), []);
 });
 
-test('every_tool_named_is_one_of_the_ten', () => {
+test('every_tool_named_is_one_of_the_twelve', () => {
   assert.deepEqual(markdownFiles().flatMap((file) => toolProblems(read(file)).map((problem) => `${file}: ${problem}`)), []);
 });
 
@@ -862,17 +880,19 @@ test('the_command_reference_covers_every_command_and_option', () => {
   assert.deepEqual(expected.filter((entry) => !seen.has(entry)), []);
 });
 
-test('the_command_reference_marks_what_wave_2_adds', () => {
+test('the_command_reference_marks_what_wave_2_and_cli_0_3_add', () => {
   const rows = read(join('skills', 'chesly', 'references', 'commands.md')).split('\n').filter((line) => line.startsWith('| `chesly'));
   assert.ok(rows.length > 0, 'the commands are in a table');
   for (const row of rows) {
     const [, cell] = row.split('|');
     const commands = codeOf(cell).flatMap(cheslyCommands).map(({ words }) => words);
-    const wave2 = commands.some((words) => {
+    const waves = commands.flatMap((words) => {
       const options = optionsOf(words) ?? {};
-      return CLI[words[0]]?.wave === 2 || words.some((word) => options[word.split('=')[0]] === 2);
+      return [CLI[words[0]]?.wave, ...words.map((word) => options[word.split('=')[0]])];
     });
-    assert.equal(row.includes('(Wave 2)'), wave2, `${row}\nshould ${wave2 ? '' : 'not '}be marked (Wave 2)`);
+    for (const [wave, mark] of [[2, '(Wave 2)'], [3, '(chesly 0.3.0 or later)']]) {
+      assert.equal(row.includes(mark), waves.includes(wave), `${row}\nshould ${waves.includes(wave) ? '' : 'not '}be marked ${mark}`);
+    }
   }
 });
 
@@ -910,7 +930,7 @@ test('the_references_name_every_network', () => {
 test('the_recipes_cover_the_planned_tasks', () => {
   const recipes = read(join('skills', 'chesly', 'references', 'recipes.md'));
   for (const title of ['What did I miss', 'Reply to the newest unread', 'Find who I owe a reply', 'Catch up on email',
-    "Forward a voice note's transcript", 'Watch a chat and answer']) {
+    "Forward a voice note's transcript", 'Watch a chat and answer', 'Fix a typo in the message just sent']) {
     assert.match(recipes, new RegExp(`^## ${title}`, 'm'), `a recipe for "${title}"`);
   }
   assert.ok(codeOf(section(recipes, 'Catch up on email')).includes('chesly catchup --network email --json'));
@@ -948,7 +968,7 @@ test('the_rest_reference_gives_the_plans_limits_and_the_per_user_ones', () => {
 
 test('wave_2_facts_in_prose_are_marked', () => {
   // A line that states one of these Wave 2 facts outside the marked tables carries the mark too.
-  const facts = [/\b7 (?:of its 10 )?tools\b/, /OpenAPI 3\.1 document/];
+  const facts = [/\b7 (?:of its 12 )?tools\b/, /OpenAPI 3\.1 document/];
   for (const file of skillFiles('chesly-api')) {
     for (const line of read(file).split('\n')) {
       if (facts.some((fact) => fact.test(line))) assert.ok(line.includes('(Wave 2)'), `${file}: ${line}`);
@@ -970,7 +990,7 @@ test('the_rest_reference_covers_the_planned_topics', () => {
   assert.match(rest, /opaque/i, 'IDs are opaque');
 });
 
-test('the_mcp_reference_covers_the_ten_tools_and_marks_wave_2', () => {
+test('the_mcp_reference_covers_the_twelve_tools_and_marks_wave_2', () => {
   const rows = apiReference('mcp.md').split('\n').filter((line) => /^\| `[a-z_]+` \|/.test(line));
   const tool = (row) => /^\| `([a-z_]+)`/.exec(row)[1];
   assert.deepEqual(rows.map(tool).sort(), Object.keys(TOOLS).sort());
@@ -981,6 +1001,13 @@ test('the_mcp_reference_covers_the_ten_tools_and_marks_wave_2', () => {
     assert.equal(row.split('|')[2].trim(), readKey ? 'any' : 'full', `${row}\nthe key it needs`);
   }
   for (const name of NETWORK_INPUT_TOOLS) assert.ok(rows.find((row) => tool(row) === name).includes('`network`'), name);
+  // A tool count anywhere is a full key's (all of them) or a read-only key's.
+  const counts = [Object.keys(TOOLS).length, Object.values(TOOLS).filter((entry) => entry.readKey).length];
+  for (const file of copyFiles()) {
+    for (const [, count] of read(file).matchAll(/\b(\d+|ten|seven|twelve) tools\b/gi)) {
+      assert.ok(counts.map(String).includes(count), `${file}: ${count} tools; a full key sees ${counts[0]}, a read-only key ${counts[1]}`);
+    }
+  }
 });
 
 test('the_mcp_reference_sets_up_every_client', () => {
@@ -1291,4 +1318,46 @@ test('the_mcp_reference_says_how_to_add_chesly_to_chatgpt', () => {
     assert.ok(chatgpt.includes(words), `the ChatGPT part lacks ${words}`);
   }
   assert.match(mcp, /Two ways in\. Claude, ChatGPT, Claude Code/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Editing and deleting a message the user sent (2026-11-15)
+// ---------------------------------------------------------------------------------------------
+
+/** Each network's time limits on an edit and on a delete for everyone, as the API applies them. */
+const EDIT_DELETE_LIMITS = [
+  ['WhatsApp', '15 minutes', '2 days'],
+  ['Signal', '24 hours, at most 10 edits', '24 hours'],
+  ['Telegram', '48 hours', 'no limit'],
+  ['Instagram', '15 minutes', 'no limit'],
+  ['Messenger', '15 minutes', '10 minutes'],
+  ['Google Messages', '15 minutes', '15 minutes'],
+  ['LinkedIn', '1 hour', '1 hour'],
+  ['iMessage', '15 minutes, at most 5 edits', '2 minutes'],
+  ['Discord, Slack, Google Chat, TikTok', 'no limit', 'no limit'],
+  ['X', 'no limit', 'not possible (X keeps it for the other person)'],
+  ['OpenAI Dots', 'no limit', 'not possible'],
+  ['WeChat', 'not possible', '2 minutes'],
+  ['LINE', 'not possible', '24 hours'],
+  ['Snapchat, Reddit', 'not possible', 'no limit'],
+  ['Grok Bot, Muse', 'not possible', 'not possible'],
+];
+
+test('the_edit_and_delete_limits_are_stated_once', () => {
+  const rest = join('skills', 'chesly-api', 'references', 'rest.md');
+  const rows = section(read(rest), 'Editing and deleting').split('\n').filter((line) => line.startsWith('| '));
+  assert.deepEqual(rows, ['| Network | Edit | Delete for everyone |', ...EDIT_DELETE_LIMITS.map((row) => `| ${row.join(' | ')} |`)]);
+  for (const file of copyFiles().filter((candidate) => candidate !== rest)) {
+    assert.doesNotMatch(read(file), /\| Delete for everyone \|/, `${file}: the table is rest.md's alone`);
+  }
+});
+
+test('edits_and_deletes_are_only_for_messages_sent_from_chesly', () => {
+  for (const file of [join('skills', 'chesly-api', 'SKILL.md'), join('skills', 'chesly-api', 'references', 'rest.md'),
+    join('skills', 'chesly-api', 'references', 'mcp.md'), join('skills', 'chesly', 'references', 'commands.md')]) {
+    const text = read(file);
+    assert.match(text, /sent from Chesly/, `${file}: only messages sent from Chesly`);
+    const { inline } = parseMarkdown(text);
+    for (const code of ['message_not_editable', 'message_not_deletable']) assert.ok(inline.includes(code), `${file} names ${code}`);
+  }
 });

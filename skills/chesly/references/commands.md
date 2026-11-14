@@ -2,7 +2,7 @@
 
 `chesly --help` and `chesly <command> --help` describe every command. Every command also takes `--json`, which prints the API's JSON as it is (the default when the output is piped), and `--help`. Nothing ever prompts.
 
-Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2.
+Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2. Rows marked (chesly 0.3.0 or later) need that version: `chesly --version` shows the one installed, and `npm install -g chesly` updates it.
 
 ## Contents
 
@@ -10,6 +10,7 @@ Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2.
 - [Reading](#reading)
 - [Chat names](#chat-names)
 - [Sending](#sending)
+- [Editing and deleting](#editing-and-deleting)
 - [Watching](#watching)
 - [Webhooks](#webhooks)
 - [Keys and usage](#keys-and-usage)
@@ -36,7 +37,7 @@ Never type or paste a key itself: on a command line, the process list and the sh
 
 The key goes to the OS keychain, or to `~/.config/chesly/credentials.json` (mode 0600) where there is no keychain. A pending sign-in waits in `~/.config/chesly/pending-login.json` until `--wait` finishes it or the code expires, 10 minutes later; `--wait` then fails with `expired_token`, and a new `--no-wait` starts over. A denied sign-in fails with `access_denied`. Each sign-in makes a new key, up to 100 active keys on either plan (`limits.api_keys` in `chesly whoami --json`); past it, a new one is refused (`key_limit_reached`).
 
-A read-only key (scope `read`) can read, search and watch, but not send.
+A read-only key (scope `read`) can read, search and watch, but not send, edit or delete.
 
 ## Reading
 
@@ -96,6 +97,22 @@ Names are looked up among chat networks only. To find an email thread by its sub
 - Also refused: a message request (`message_request`), a chat Chesly can't send to (`unsupported_chat`), a `--reply-to` from another chat (`invalid_reply_to`), and any send with a read-only key (`insufficient_scope`).
 - An email reply goes to everyone on the message it answers (by default the newest one from someone else), with "Re:" and the thread's subject.
 
+## Editing and deleting
+
+| Command | What it does |
+|---|---|
+| `chesly edit <msg_id> - <<'EOF'` | Changes the text of a message the user sent from Chesly, for everyone in the chat, to the text from the heredoc that follows. (chesly 0.3.0 or later) |
+| `chesly delete <msg_id>` | Deletes a message the user sent from Chesly, for everyone in the chat. It can't be brought back. (chesly 0.3.0 or later) |
+
+- Only messages the user sent from Chesly: its apps or the API, such as a `chesly send`, whose answer's `id` is the `<msg_id>`. A message the user sent in the network's own app can't be changed from here, and neither can an email.
+- `edit` takes text messages only. Its text comes like a send's, on standard input: `-`, then a quoted heredoc or a file, and the same text limits apply. It prints the message as edited, with its new `text` and `edited: true`.
+- `delete` prints `{"id":"msg_…","deleted":true}`.
+- Each network's time limits apply, such as 15 minutes to edit and 2 days to delete on WhatsApp. Past them, or for a message that can't be changed, the command exits 1 with `message_not_editable` or `message_not_deletable`, and the `detail` says why, naming the limit. Don't retry: tell the user.
+- Both are safe to run again: an edit to the text the message already has changes nothing, and deleting a message that is already deleted gives the same answer.
+- An account can edit or delete as many messages an hour as it can send: 60 on WhatsApp, 30 elsewhere. Past that, the command exits 5 with `rate_limited` and `retry_after`.
+- An unknown message exits 4 with `message_not_found`. A read-only key gets `insufficient_scope`.
+- `watch` shows an edit as `message.edited` and a delete as `message.deleted`.
+
 ## Watching
 
 | Command | What it does |
@@ -146,7 +163,7 @@ New keys come from `chesly login`, or from https://web.chesly.app/api/keys. `key
 | 1 | error |
 | 2 | usage |
 | 3 | not signed in (no key, a malformed one, or the key was rejected) |
-| 4 | not found (an unknown chat, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |
+| 4 | not found (an unknown chat, message, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |
 | 5 | not final, come back to it: rate limited (a 429: too many requests, a send cap, uploads held after a slow one, or too many open event streams), a request that took too long to arrive (a 408, such as an upload's `upload_timeout`), briefly unavailable (a 502, 503 or 504, from the API or a gateway), a first attempt still running (a 409 `idempotency_in_progress`), or a send the network didn't confirm (`delivery_unconfirmed`: check the chat before you send it again). `retry_after` says when, if the answer has it |
 | 6 | payment required: the account needs an API plan, or this period's transcription minutes are used up |
 

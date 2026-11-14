@@ -15,6 +15,7 @@ Rows and sections marked (Wave 2) arrive with the API's second wave.
 - [Idempotency (Wave 2)](#idempotency-wave-2)
 - [Sending (Wave 2)](#sending-wave-2)
 - [Files (Wave 2)](#files-wave-2)
+- [Editing and deleting](#editing-and-deleting)
 - [Contacts and transcripts (Wave 2)](#contacts-and-transcripts-wave-2)
 - [Limits](#limits)
 - [Plans and billing](#plans-and-billing)
@@ -48,6 +49,7 @@ curl https://api.chesly.app/v1/me -H "Authorization: Bearer $CHESLY_API_KEY"
 | `GET /v1/media/{media_id}` | The bytes of a message's media (`media.id`). |
 | `POST /v1/chats/{chat_id}/messages` | Sends a message. See [Sending](#sending-wave-2). (Wave 2) |
 | `POST /v1/media` | Uploads a file to send. See [Files](#files-wave-2). (Wave 2) |
+| `PATCH /v1/messages/{message_id}`, `DELETE /v1/messages/{message_id}` | Edits the text of a message the user sent from Chesly, or deletes it, for everyone in the chat. See [Editing and deleting](#editing-and-deleting). |
 | `GET /v1/contacts` | The people of the user's direct chats, by name. (Wave 2) |
 | `POST /v1/messages/{message_id}/transcript` | A voice note as text. (Wave 2) |
 | `GET /v1/events`, `GET /v1/events/stream` | The event log, polled or streamed: [events-and-webhooks.md](events-and-webhooks.md). (Wave 2) |
@@ -97,7 +99,7 @@ Every error is `application/problem+json` (RFC 9457):
 - `title` is fixed per code; `detail` explains this occurrence. `request_id` is what support looks up.
 - A `400` from bad parameters lists each problem in `errors`, with its `detail` and `pointer`.
 - A `429` or `503` carries `Retry-After` and `retry_after`, in seconds. A `503` `upstream_unavailable` is temporary: retry it.
-- Codes to expect: `invalid_api_key` (401), `insufficient_scope` (403), `chat_not_found` and `message_not_found` (404), `rate_limited` and `send_limit_reached` (429), `api_plan_required` and `transcription_limit_reached` (402), `upstream_unavailable` and `plan_unavailable` (503).
+- Codes to expect: `invalid_api_key` (401), `insufficient_scope` (403), `chat_not_found` and `message_not_found` (404), `message_not_editable` and `message_not_deletable` (409), `rate_limited` and `send_limit_reached` (429), `api_plan_required` and `transcription_limit_reached` (402), `upstream_unavailable` and `plan_unavailable` (503).
 
 ## Idempotency (Wave 2)
 
@@ -161,6 +163,54 @@ curl https://api.chesly.app/v1/media \
 The answer, `201`, is `{ "id": "media_…", "mime_type": "application/pdf", "size": 48213, "file_name": "report.pdf" }`. Send it as `media_id`, with any `text` as its caption. One file a message, of at most 50 MB (50,000,000 bytes); a bigger one is `400` `media_too_large`.
 
 A too-slow upload (under 50 KB/s after 10 s, or not finished within 60 s) answers `408` `upload_timeout`, and the account's uploads are then held for 60 s (`429` `rate_limited`): wait about 60 s and send again, or send a smaller file on a slow connection.
+
+## Editing and deleting
+
+`PATCH /v1/messages/{message_id}` changes the text of a message the user sent, and `DELETE /v1/messages/{message_id}` deletes one, for everyone in the chat. Both need a full-access key: a read-only key gets `403` `insufficient_scope`.
+
+- Only messages the user sent from Chesly: its apps or the API (`sender.is_me` is true, and it went out through Chesly). A message the user sent in the network's own app, such as WhatsApp on their phone, is refused: Chesly can't change it on the network.
+- An edit takes text messages only: not photos, videos, files, voice notes, stickers, locations, polls or calls, and not a deleted message.
+- Email takes neither: an email can't be edited or unsent.
+
+Each network's time limits apply. Past them the API refuses instead of pretending, because the network would keep showing the old message:
+
+| Network | Edit | Delete for everyone |
+|---|---|---|
+| WhatsApp | 15 minutes | 2 days |
+| Signal | 24 hours, at most 10 edits | 24 hours |
+| Telegram | 48 hours | no limit |
+| Instagram | 15 minutes | no limit |
+| Messenger | 15 minutes | 10 minutes |
+| Google Messages | 15 minutes | 15 minutes |
+| LinkedIn | 1 hour | 1 hour |
+| iMessage | 15 minutes, at most 5 edits | 2 minutes |
+| Discord, Slack, Google Chat, TikTok | no limit | no limit |
+| X | no limit | not possible (X keeps it for the other person) |
+| OpenAI Dots | no limit | not possible |
+| WeChat | not possible | 2 minutes |
+| LINE | not possible | 24 hours |
+| Snapchat, Reddit | not possible | no limit |
+| Grok Bot, Muse | not possible | not possible |
+
+```bash
+curl -X PATCH https://api.chesly.app/v1/messages/<msg_id> \
+  -H "Authorization: Bearer $CHESLY_API_KEY" \
+  -H "Content-Type: application/json" \
+  --data-binary @- <<'EOF'
+{"text": "Landed safe! Calling you at 8"}
+EOF
+
+curl -X DELETE https://api.chesly.app/v1/messages/<msg_id> \
+  -H "Authorization: Bearer $CHESLY_API_KEY"
+```
+
+- The body is `{"text": "…"}` and nothing else: an unknown field is `400` `invalid_request`. The text follows a send's rules: blank text is `400` `invalid_request`, and text over the network's cap is `400` `text_too_long` (in UTF-16 code units: Instagram 1,000; Discord 2,000; Telegram 4,096; every other network 10,000). Like a send's, it comes from a quoted heredoc or a JSON library, never pasted into a string.
+- An edit answers `200` with the message, as `GET /v1/messages/{message_id}` answers it, with the new `text` and `edited: true`. A delete answers `204`, with no body. A deleted message can't be brought back.
+- Both are safe to retry and take no `Idempotency-Key` (an edit ignores one): an edit to the text the message already has sends nothing new and answers the message, and a delete of a deleted message answers `204` again.
+- A refused edit is `409` `message_not_editable`, and a refused delete `409` `message_not_deletable`. The `detail` says why: not sent from Chesly, not text, deleted, email, a network that takes none, or past the network's time limit, which it names. Don't retry: tell the user.
+- Also refused: a chat that is a message request (`409` `message_request`), and any edit or delete while Chesly pauses a network (`503` `network_unavailable`).
+- An account may edit or delete as many messages an hour as it may send: 60 on WhatsApp, 30 elsewhere. Past that, `429` `rate_limited` with `Retry-After`.
+- An edit reaches the event stream and webhooks as `message.edited`, and a delete as `message.deleted`.
 
 ## Contacts and transcripts (Wave 2)
 

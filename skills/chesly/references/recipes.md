@@ -1,6 +1,6 @@
 # Recipes
 
-Each recipe runs the CLI with `--json` and reads its JSON. Before any send, show the user the text and wait for their OK, unless they have told you otherwise. A send takes its text from a quoted heredoc, exactly as approved, never from the command line.
+Each recipe runs the CLI with `--json` and reads its JSON. Before any send or edit, show the user the text and wait for their OK, unless they have told you otherwise. A send or an edit takes its text from a quoted heredoc, exactly as approved, never from the command line.
 
 ## What did I miss
 
@@ -82,3 +82,26 @@ The CLI has no transcribe command, so this step uses the Chesly API (the `chesly
 5. Stop the stream when the user is done.
 
 The user's own sends come back as `message.sent` events; `--types message.received` leaves them out.
+
+## Fix a typo in the message just sent
+
+Editing needs chesly 0.3.0 or later (`chesly --version`).
+
+1. A send answers with the message it sent. Keep its `id`:
+
+   ```bash
+   chesly send <chat_id> - --wait --json <<'EOF'
+   See you at 8 at the station!
+   EOF
+   ```
+
+2. Show the user the corrected text and wait for their OK.
+3. Edit the message with that `id`, the new text in a quoted heredoc, as for a send:
+
+   ```bash
+   chesly edit <msg_id> - --json <<'EOF'
+   See you at 7 at the station!
+   EOF
+   ```
+
+4. The answer is the message, with its new `text` and `edited: true`. An exit 1 with `message_not_editable` means the network takes no edit to it: too late (15 minutes on WhatsApp), or a network without edits. Its `detail` says which. Tell the user, and offer to send the correction as a new message.
