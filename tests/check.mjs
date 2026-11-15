@@ -1352,7 +1352,7 @@ test('the_edit_and_delete_limits_are_stated_once', () => {
   }
 });
 
-test('edits_and_deletes_are_only_for_messages_sent_from_chesly', () => {
+test('edits_are_only_for_messages_sent_from_chesly', () => {
   for (const file of [join('skills', 'chesly-api', 'SKILL.md'), join('skills', 'chesly-api', 'references', 'rest.md'),
     join('skills', 'chesly-api', 'references', 'mcp.md'), join('skills', 'chesly', 'references', 'commands.md')]) {
     const text = read(file);

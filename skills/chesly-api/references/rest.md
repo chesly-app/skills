@@ -49,7 +49,7 @@ curl https://api.chesly.app/v1/me -H "Authorization: Bearer $CHESLY_API_KEY"
 | `GET /v1/media/{media_id}` | The bytes of a message's media (`media.id`). |
 | `POST /v1/chats/{chat_id}/messages` | Sends a message. See [Sending](#sending-wave-2). (Wave 2) |
 | `POST /v1/media` | Uploads a file to send. See [Files](#files-wave-2). (Wave 2) |
-| `PATCH /v1/messages/{message_id}`, `DELETE /v1/messages/{message_id}` | Edits the text of a message the user sent from Chesly, or deletes it, for everyone in the chat. See [Editing and deleting](#editing-and-deleting). |
+| `PATCH /v1/messages/{message_id}`, `DELETE /v1/messages/{message_id}` | Edits the text of a message the user sent from Chesly, or deletes any message the user sent, for everyone in the chat. See [Editing and deleting](#editing-and-deleting). |
 | `GET /v1/contacts` | The people of the user's direct chats, by name. (Wave 2) |
 | `POST /v1/messages/{message_id}/transcript` | A voice note as text. (Wave 2) |
 | `GET /v1/events`, `GET /v1/events/stream` | The event log, polled or streamed: [events-and-webhooks.md](events-and-webhooks.md). (Wave 2) |
@@ -168,7 +168,7 @@ A too-slow upload (under 50 KB/s after 10 s, or not finished within 60 s) answer
 
 `PATCH /v1/messages/{message_id}` changes the text of a message the user sent, and `DELETE /v1/messages/{message_id}` deletes one, for everyone in the chat. Both need a full-access key: a read-only key gets `403` `insufficient_scope`.
 
-- Only messages the user sent from Chesly: its apps or the API (`sender.is_me` is true, and it went out through Chesly). A message the user sent in the network's own app, such as WhatsApp on their phone, is refused: Chesly can't change it on the network.
+- Only the user's own messages (`sender.is_me` is true). A delete takes any of them, including one sent in the network's own app, such as WhatsApp on their phone. An edit takes only one sent from Chesly: its apps or the API. One sent in the network's own app is refused, as Chesly can't change its text on the network.
 - An edit takes text messages only: not photos, videos, files, voice notes, stickers, locations, polls or calls, and not a deleted message.
 - Email takes neither: an email can't be edited or unsent.
 
@@ -207,7 +207,7 @@ curl -X DELETE https://api.chesly.app/v1/messages/<msg_id> \
 - The body is `{"text": "…"}` and nothing else: an unknown field is `400` `invalid_request`. The text follows a send's rules: blank text is `400` `invalid_request`, and text over the network's cap is `400` `text_too_long` (in UTF-16 code units: Instagram 1,000; Discord 2,000; Telegram 4,096; every other network 10,000). Like a send's, it comes from a quoted heredoc or a JSON library, never pasted into a string.
 - An edit answers `200` with the message, as `GET /v1/messages/{message_id}` answers it, with the new `text` and `edited: true`. A delete answers `204`, with no body. A deleted message can't be brought back.
 - Both are safe to retry and take no `Idempotency-Key` (an edit ignores one): an edit to the text the message already has sends nothing new and answers the message, and a delete of a deleted message answers `204` again.
-- A refused edit is `409` `message_not_editable`, and a refused delete `409` `message_not_deletable`. The `detail` says why: not sent from Chesly, not text, deleted, email, a network that takes none, or past the network's time limit, which it names. Don't retry: tell the user.
+- A refused edit is `409` `message_not_editable`, and a refused delete `409` `message_not_deletable`. The `detail` says why: not the user's, not sent from Chesly (an edit), not text, deleted, email, a network that takes none, or past the network's time limit, which it names. Don't retry: tell the user.
 - Also refused: a chat that is a message request (`409` `message_request`), and any edit or delete while Chesly pauses a network (`503` `network_unavailable`).
 - An account may edit or delete as many messages an hour as it may send: 60 on WhatsApp, 30 elsewhere. Past that, `429` `rate_limited` with `Retry-After`.
 - An edit reaches the event stream and webhooks as `message.edited`, and a delete as `message.deleted`.

@@ -102,9 +102,9 @@ Names are looked up among chat networks only. To find an email thread by its sub
 | Command | What it does |
 |---|---|
 | `chesly edit <msg_id> - <<'EOF'` | Changes the text of a message the user sent from Chesly, for everyone in the chat, to the text from the heredoc that follows. (chesly 0.3.0 or later) |
-| `chesly delete <msg_id>` | Deletes a message the user sent from Chesly, for everyone in the chat. It can't be brought back. (chesly 0.3.0 or later) |
+| `chesly delete <msg_id>` | Deletes a message the user sent, from Chesly or the network's own app, for everyone in the chat. It can't be brought back. (chesly 0.3.0 or later) |
 
-- Only messages the user sent from Chesly: its apps or the API, such as a `chesly send`, whose answer's `id` is the `<msg_id>`. A message the user sent in the network's own app can't be changed from here, and neither can an email.
+- Only the user's own messages. `delete` takes any of them; `edit` only one sent from Chesly: its apps or the API, such as a `chesly send`, whose answer's `id` is the `<msg_id>`. One the user sent in the network's own app can be deleted but not edited from here, and an email can be neither.
 - `edit` takes text messages only. Its text comes like a send's, on standard input: `-`, then a quoted heredoc or a file, and the same text limits apply. It prints the message as edited, with its new `text` and `edited: true`.
 - `delete` prints `{"id":"msg_…","deleted":true}`.
 - Each network's time limits apply, such as 15 minutes to edit and 2 days to delete on WhatsApp. Past them, or for a message that can't be changed, the command exits 1 with `message_not_editable` or `message_not_deletable`, and the `detail` says why, naming the limit. Don't retry: tell the user.

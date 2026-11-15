@@ -21,7 +21,7 @@ Chesly hosts the MCP server, so there is nothing to install or run: the URL is `
 | `mark_read` | full | `chat_id` | Marks a chat read, as the apps do; the network gets a read receipt unless the user keeps receipts private. |
 | `send_message` | full | `chat_id`, `text`, `reply_to` (a message of the same chat), `media_id`, `idempotency_key` | Sends a message, as the user, to one of their chats. (Wave 2) |
 | `edit_message` | full | `message_id`, `text` (1 to 10,000 characters) | Changes the text of a message the user sent from Chesly, for everyone in the chat, and answers the message as edited. |
-| `delete_message` | full | `message_id` | Deletes a message the user sent from Chesly, for everyone in the chat, and answers `{ "id": "msg_…", "deleted": true }`. |
+| `delete_message` | full | `message_id` | Deletes a message the user sent, from Chesly or the network's own app, for everyone in the chat, and answers `{ "id": "msg_…", "deleted": true }`. |
 | `find_contact` | any | `query` (1 to 100 characters), `limit` (at most 20, default 10) | Finds the people of the user's direct chats by name, on every network, each with their direct chat. (Wave 2) |
 | `transcribe_voice_note` | full | `message_id` | Turns a voice note into text, from the plan's transcription minutes. (Wave 2) |
 
@@ -29,7 +29,7 @@ Chesly hosts the MCP server, so there is nothing to install or run: the URL is `
 - `network` is one network's name, such as `whatsapp`. Email stays out of `list_chats`, `catch_up` and `search_messages` unless `network` is `email`; an email chat or message is always reachable by its ID.
 - `send_message` follows the REST API's rules: only chats the user has, no message requests, a `reply_to` from that chat (else `invalid_reply_to`), the send limits, and at most once per `idempotency_key`. Pass one, and reuse it if you call again after an unclear failure.
 - A file for `send_message` comes from `POST /v1/media`; the MCP server has no upload tool.
-- `edit_message` and `delete_message` follow the REST API's rules: only messages the user sent from Chesly (its apps or the API), text-only edits, no email, and each network's time limits ([the table](rest.md#editing-and-deleting)). Past them they answer `message_not_editable` or `message_not_deletable`, whose `detail` says why: tell the user, don't retry. Calling either again is safe: the same text, or a message already deleted, gets the same answer.
+- `edit_message` and `delete_message` follow the REST API's rules: only the user's own messages, edits only of ones sent from Chesly (its apps or the API) and only of text, no email, and each network's time limits ([the table](rest.md#editing-and-deleting)). Past them they answer `message_not_editable` or `message_not_deletable`, whose `detail` says why: tell the user, don't retry. Calling either again is safe: the same text, or a message already deleted, gets the same answer.
 - `transcribe_voice_note` past the period's minutes answers `transcription_limit_reached`: tell the user they come back next period, or that Pro has 3,000 minutes. Don't retry.
 
 ## How the tools answer
