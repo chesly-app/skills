@@ -30,7 +30,7 @@ Chesly hosts the MCP server, so there is nothing to install or run: the URL is `
 - `send_message` follows the REST API's rules: only chats the user has, no message requests, a `reply_to` from that chat (else `invalid_reply_to`), the send limits, and at most once per `idempotency_key`. Pass one, and reuse it if you call again after an unclear failure.
 - A file for `send_message` comes from `POST /v1/media`; the MCP server has no upload tool.
 - `edit_message` and `delete_message` follow the REST API's rules: only the user's own messages, edits only of ones sent from Chesly (its apps or the API) and only of text, no email, and each network's time limits ([the table](rest.md#editing-and-deleting)). Past them they answer `message_not_editable` or `message_not_deletable`, whose `detail` says why: tell the user, don't retry. Calling either again is safe: the same text, or a message already deleted, gets the same answer.
-- `transcribe_voice_note` past the period's minutes answers `transcription_limit_reached`: tell the user they come back next period, or that Pro has 3,000 minutes. Don't retry.
+- `transcribe_voice_note` past the period's minutes on Personal or Pro answers `transcription_limit_reached`: tell the user they come back next period, or that Pro has 3,000 minutes. Starter has no transcription, so even the first voice note gets it: tell the user transcription needs Personal or Pro. Don't retry.
 
 ## How the tools answer
 

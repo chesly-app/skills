@@ -1,6 +1,6 @@
 # Events and webhooks (Wave 2)
 
-Every change to the user's chats lands in one log, ordered per user and kept for the plan's event history: `limits.event_retention_days` in `GET /v1/me`, 7 days on Personal, 30 on Pro. There are three ways to take it, with the same events:
+Every change to the user's chats lands in one log, ordered per user and kept for the plan's event history: `limits.event_retention_days` in `GET /v1/me`, 1 day on Starter, 7 on Personal, 30 on Pro. There are three ways to take it, with the same events:
 
 | Way | Best for |
 |---|---|

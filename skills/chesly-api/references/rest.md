@@ -216,7 +216,7 @@ curl -X DELETE https://api.chesly.app/v1/messages/<msg_id> \
 
 - `GET /v1/contacts?q=<name>` finds the people the user has direct chats with, on every network: `q` is 1 to 100 characters, `limit` 1 to 50 (default 20). Each contact has `id` (`contact_…`), `name`, `network`, `account_id` and `chat_id`, the direct chat to send to. No phone numbers or handles.
 - `POST /v1/messages/{message_id}/transcript` answers `{ message_id, text, language, duration_seconds, cached }`. It needs a full-access key and uses the plan's transcription minutes: `plan.transcription_seconds_this_period` of `plan.transcription_seconds_included` in `GET /v1/me`. The same voice note again uses none (`cached` is true). A message that isn't a voice note is `400` `not_a_voice_note`; while transcription is down, `503` `transcription_unavailable`.
-- Past the period's minutes, it is `402` `transcription_limit_reached` until the next period: tell the user they come back then, or that Pro has 3,000 minutes. Don't retry.
+- Past the period's minutes on Personal or Pro, it is `402` `transcription_limit_reached` until the next period: tell the user they come back then, or that Pro has 3,000 minutes. Starter has no transcription (`plan.transcription_seconds_included` is 0), so even the first voice note gets it: tell the user transcription needs Personal or Pro. Don't retry.
 
 ## Limits
 
@@ -230,30 +230,30 @@ curl -X DELETE https://api.chesly.app/v1/messages/<msg_id> \
 | Files | One per message, up to 50 MB (50,000,000 bytes) |
 | Live streams | The plan's: `limits.event_streams` |
 | Webhooks | The plan's: `limits.webhooks` |
-| Active keys | Up to 100 on both plans (`limits.api_keys`) |
+| Active keys | Up to 100 on every plan (`limits.api_keys`) |
 
 Past a limit: `429` with `Retry-After`. More keys separate agents, but never add requests: a user's keys share the plan's limit. `GET /v1/me` has the plan's numbers in `limits`, and each account's sends so far (`limits.sends`: `per_hour`, `per_day`, `used_last_hour`, `used_last_day`). Every answer carries `RateLimit` and `RateLimit-Policy` headers.
 
 ## Plans and billing
 
-Two flat plans, with the same API: reads, sends, events, webhooks, the CLI and MCP, on every connected account. They differ in limits and support:
+Three flat plans, with the same API: reads, sends, events, webhooks, the CLI and MCP, on every connected account. They differ in limits and support:
 
-| | Personal | Pro |
-|---|---|---|
-| Price | $49 a month | $199 a month |
-| Transcription a period | 600 minutes | 3,000 minutes |
-| Webhooks | 25 | 100 |
-| Requests, per key and for all of a user's keys together | 15 a second, 900 a minute | 30 a second, 1,800 a minute |
-| Live event streams per user | 10 | 25 |
-| Event history | 7 days | 30 days |
-| Support | email | priority email |
-| Includes | Chesly Plus | Chesly Max |
-| Connected accounts (app caps) | 10, up to 3 per app (Plus's) | 50, up to 10 per app |
+| | Starter | Personal | Pro |
+|---|---|---|---|
+| Price | $20 a month | $49 a month | $199 a month |
+| Transcription a period | none | 600 minutes | 3,000 minutes |
+| Webhooks | 5 | 25 | 100 |
+| Requests, per key and for all of a user's keys together | 5 a second, 300 a minute | 15 a second, 900 a minute | 30 a second, 1,800 a minute |
+| Live event streams per user | 2 | 10 | 25 |
+| Event history | 1 day | 7 days | 30 days |
+| Support | email | email | priority email |
+| Includes | no Chesly app plan | Chesly Plus | Chesly Max |
+| Connected accounts (app caps) | 5, one per app (the free app's) | 10, up to 3 per app (Plus's) | 50, up to 10 per app |
 
-Both plans allow up to 100 active API keys: a cap against runaway scripts, not a plan difference, since a user's keys share the request limits.
+Every plan allows up to 100 active API keys: a cap against runaway scripts, not a plan difference, since a user's keys share the request limits.
 
 - Calls are counted, never billed: `plan.calls_this_period` in `GET /v1/me` shows them.
-- `plan` in `GET /v1/me` says which plan it is (`personal` or `pro`), its status and its period, and `limits` has its numbers. Read them rather than assume.
+- `plan` in `GET /v1/me` says which plan it is (`starter`, `personal` or `pro`), its status and its period, and `limits` has its numbers. Read them rather than assume.
 - Each plan starts with a 7-day trial, with a card and the plan's full limits.
 - An upgrade applies at once. A downgrade applies at the end of the billing period, so its lower limits start then; until then `plan.scheduled_change` shows it (`{ plan, at }`, or `null` when nothing is waiting). A downgrade deletes nothing, but a new key or webhook past the plan's limit is refused (`key_limit_reached`, `webhook_limit_reached`).
 - `402` `api_plan_required` means there is no plan. The user buys, switches and manages it at https://web.chesly.app/api/billing.
