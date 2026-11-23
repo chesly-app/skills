@@ -34,14 +34,26 @@ Each `read` is one API call, so 30 chats cost 30 calls. Include groups only when
 
 ## Catch up on email
 
-1. Run `chesly catchup --network email --json`: the unread email threads, each with its newest messages. A thread's `name` is its subject, and each message carries `email.from`, `email.to` and `email.cc`. If it answers `account_reconnect_required`, ask the user to reconnect that email account in the Chesly app.
-2. To answer a thread, show the user the text and wait for their OK, then send it. The reply goes to everyone on the newest message from someone else, with "Re:" and the subject. Email takes text only.
+1. Run `chesly catchup --network email --json`: the unread email threads, each with its newest messages. A thread's `name` is its subject, and each message carries `email.from`, `email.to`, `email.cc` and `email.attachments`, the files it came with. If it answers `account_reconnect_required`, ask the user to reconnect that email account in the Chesly app.
+2. To answer a thread, show the user the text and wait for their OK, then send it. The reply goes to everyone on the newest message from someone else, with "Re:" and the subject. It can carry one file of up to 25 MB, with `--file <path>`.
 
    ```bash
    chesly send <chat_id> - --wait --json <<'EOF'
    Thanks, the invoice is paid.
    EOF
    ```
+
+## Save or forward a file someone sent
+
+1. Find it: run `chesly read "<chat>" --json`. A message with a file has `type` `image`, `video`, `audio` or `file`, and its `media.id` is the file's media ID; an email lists its files in `email.attachments`, each with an `id`.
+2. To save it, run `chesly download <media_id> --json` (chesly 0.4.0 or later). It saves the file in the current directory under its own name and prints `path`, `size` and `mime_type`. It never replaces a file: an exit 2 with `file_exists` means one is there already, so pick another name with `-o <path>`, or ask the user before you add `--force`.
+3. To forward it, show the user the file and the chat it goes to, and wait for their OK. Then send its media ID, with no download or upload:
+
+   ```bash
+   chesly send <chat_id> --media-id <media_id> --wait --json
+   ```
+
+   A caption comes in a quoted heredoc, as any text does: `chesly send <chat_id> - --media-id <media_id> --wait --json <<'EOF'`.
 
 ## Forward a voice note's transcript
 

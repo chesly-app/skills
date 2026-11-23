@@ -26,12 +26,14 @@ On a server or in CI, the user can set `CHESLY_API_KEY` to a key from https://we
 | Read a chat | `chesly read "<chat>" --json` |
 | Find a message | `chesly search "<query>" --json` |
 | Answer a message | `chesly send <chat_id> - --reply-to <msg_id> --wait --json <<'EOF'` |
+| Save a file someone sent | `chesly download <media_id> --json` |
 | Watch for new messages | `chesly watch --json` |
 
 - `<chat>` is a chat's name, such as `"Mom"`, or its ID (`chat_…`). Once you have a chat's `id`, use it: an ID never matches two chats.
 - `catchup` lists the unread chats that aren't muted or archived, newest first, each with its newest messages. `read` gives a chat's newest messages first, and `next_cursor` leads to older ones.
 - `send` answers in the chat, with the text on standard input (see the first rule below). `--reply-to` quotes a message of that chat, and leaving it out sends a plain message. `--wait` waits up to 30 seconds for `delivery.status`: `sent` is success, as most networks stop at `sent`; `delivered` comes only where the network reports it.
 - `watch` runs until stopped and prints one JSON event a line, such as `message.received`. Start it in the background and read its lines as they come.
+- A message's file has a media ID: its `media.id`, or the `id` of each of an email's `email.attachments`. `download` needs chesly 0.4.0 or later: it saves the file in the current directory under its own name, never replacing one (`file_exists`), and prints its `path`. `send --file <path>` attaches a file, to an email thread too (at most 25 MB there), and `send --media-id <media_id>` forwards a file someone sent, with no download.
 - `edit` and `delete` need chesly 0.3.0 or later. For everyone in the chat, `delete` deletes any message the user sent (from Chesly or the network's own app), and `edit` changes one they sent from Chesly: `chesly edit <msg_id> - --json <<'EOF'` with the new text, or `chesly delete <msg_id> --json`. They work only within the network's time limit, such as 15 minutes to edit on WhatsApp. Past it, or for an edit of a message sent in the network's own app, the command exits 1 with `message_not_editable` or `message_not_deletable`, and the error says why.
 
 ## Rules

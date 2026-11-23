@@ -45,6 +45,8 @@ None of them count as calls, and any key, read-only included, can read them. Cre
 }
 ```
 
+`data.message` is the Message the REST API answers ([rest.md](rest.md#endpoints)). A message with a file has `type` `image`, `video`, `audio` or `file`, and `media` (`id`, `mime_type`, `file_name`); an email message has `email` (`subject`, `from`, `to`, `cc`, and `attachments`, each with `id`, `file_name`, `mime_type` and `size`). `GET /v1/media/{media_id}` or the MCP tool `get_media` fetches a file by that `id`.
+
 ## The catalog
 
 | Type | When | `data` |

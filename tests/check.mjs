@@ -20,10 +20,11 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
  * The chesly CLI's commands and options. Each carries the wave that brings it: 1 is the alpha,
- * 2 is the API's Wave 2 (CLI 0.2), and 3 is CLI 0.3 (edit and delete), whose rows the command
- * reference marks (chesly 0.3.0 or later). A command's own wave also covers a change in what it does:
- * `logout` revokes its key from Wave 2 on, and `--key` reads the key from stdin (`--key -`), the
- * only form a skill shows. Every command also takes GLOBAL_OPTIONS.
+ * 2 is the API's Wave 2 (CLI 0.2), 3 is CLI 0.3 (edit and delete) and 4 is CLI 0.4 (download),
+ * whose rows the command reference marks (chesly 0.3.0 or later) and (chesly 0.4.0 or later). A
+ * command's own wave also covers a change in what it does: `logout` revokes its key from Wave 2 on,
+ * and `--key` reads the key from stdin (`--key -`), the only form a skill shows. Every command also
+ * takes GLOBAL_OPTIONS.
  */
 const CLI = {
   login: { wave: 1, options: { '--key': 2, '--no-browser': 2, '--no-wait': 2, '--wait': 2, '--force': 2 } },
@@ -41,6 +42,7 @@ const CLI = {
   },
   edit: { wave: 3, options: {} },
   delete: { wave: 3, options: {} },
+  download: { wave: 4, options: { '-o': 4, '--output': 4, '--force': 4 } },
   watch: { wave: 2, options: { '--chat': 2, '--account': 2, '--types': 2, '--networks': 2, '--after': 2 } },
   webhooks: {
     wave: 2,
@@ -64,16 +66,17 @@ const TOP_LEVEL_OPTIONS = ['--version', '--help', '--json'];
 const EXIT_CODES = [
   '| 0 | ok |',
   '| 1 | error |',
-  '| 2 | usage |',
+  '| 2 | usage: a wrong argument, or a file `download` would replace (`file_exists`) |',
   '| 3 | not signed in (no key, a malformed one, or the key was rejected) |',
-  '| 4 | not found (an unknown chat, message, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |',
+  '| 4 | not found (an unknown chat, message, file, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |',
   '| 5 | not final, come back to it: rate limited (a 429: too many requests, a send cap, uploads held after a slow one, or too many open event streams), a request that took too long to arrive (a 408, such as an upload\'s `upload_timeout`), briefly unavailable (a 502, 503 or 504, from the API or a gateway), a first attempt still running (a 409 `idempotency_in_progress`), or a send the network didn\'t confirm (`delivery_unconfirmed`: check the chat before you send it again). `retry_after` says when, if the answer has it |',
   '| 6 | payment required: the account needs an API plan, or this period\'s transcription minutes are used up (Starter has none) |',
 ];
 
 /** The codes the CLI raises itself, and its warnings, as its errors export lists them (`LOCAL_ERROR_CODES`, `LOCAL_WARNING_CODES`). */
 const CLI_ERROR_CODES = ['access_denied', 'ambiguous_chat', 'chat_not_found', 'credentials_file_error', 'delivery_failed',
-  'delivery_unconfirmed', 'expired_token', 'file_unreadable', 'internal_error', 'invalid_api_url', 'invalid_key_format', 'invalid_response',
+  'delivery_unconfirmed', 'expired_token', 'file_exists', 'file_unreadable', 'file_unwritable', 'internal_error', 'interrupted',
+  'invalid_api_url', 'invalid_key_format', 'invalid_response',
   'keychain_error', 'keychain_timeout', 'login_not_started', 'media_too_large', 'network_error', 'not_signed_in',
   'usage_error', 'http_400', 'http_404', 'http_413', 'http_429', 'http_500', 'http_502', 'http_503', 'http_504',
   'http_error'];
@@ -88,7 +91,8 @@ const NETWORK_IDS = ['whatsapp', 'imessage', 'instagram', 'messenger', 'telegram
 
 /**
  * The REST API's endpoints, each with the wave that brings it. 3 is editing and deleting a message
- * the user sent (2026-11-15), which the API reference doesn't mark.
+ * the user sent (2026-11-15) and 4 is files (2026-11-23): the one-time links MCP's get_media and
+ * create_upload hand out. The API reference marks neither.
  */
 const ENDPOINTS = {
   'GET /v1/me': 1,
@@ -105,6 +109,8 @@ const ENDPOINTS = {
   'GET /v1/catch_up': 1,
   'GET /v1/media/{media_id}': 1,
   'POST /v1/media': 2,
+  'GET /v1/downloads/{token}': 4,
+  'PUT /v1/uploads/{token}': 4,
   'POST /v1/chats/{chat_id}/messages': 2,
   'GET /v1/events': 2,
   'GET /v1/events/stream': 2,
@@ -123,7 +129,7 @@ const ENDPOINTS = {
   'GET /v1/openapi.json': 2,
 };
 
-/** The MCP server's tools: the wave that brings each (3, unmarked, as for ENDPOINTS), and whether a read-only key sees it. */
+/** The MCP server's tools: the wave that brings each (3 and 4, unmarked, as for ENDPOINTS), and whether a read-only key sees it. */
 const TOOLS = {
   list_accounts: { wave: 1, readKey: true },
   list_chats: { wave: 1, readKey: true },
@@ -137,6 +143,8 @@ const TOOLS = {
   transcribe_voice_note: { wave: 2, readKey: false },
   edit_message: { wave: 3, readKey: false },
   delete_message: { wave: 3, readKey: false },
+  get_media: { wave: 4, readKey: true },
+  create_upload: { wave: 4, readKey: false },
 };
 /** The tools that take a `network` input (Wave 2). */
 const NETWORK_INPUT_TOOLS = ['list_chats', 'catch_up', 'search_messages'];
@@ -159,6 +167,9 @@ const API_NAMES = new Set([
   ...Object.keys(TOOLS),
   // Tool inputs and query parameters.
   'per_chat', 'chat_id', 'message_id', 'reply_to', 'media_id', 'idempotency_key', 'account_id', 'updated_since',
+  'file_url', 'download_url', 'file_id',
+  // Fields: get_media's and create_upload's answers.
+  'download_expires_at', 'upload_url', 'expires_at', 'max_bytes',
   // Fields: accounts, chats, messages and pages.
   'display_name', 'connected_at', 'unread_count', 'last_message_at', 'is_archived', 'is_pinned', 'is_muted',
   'is_message_request', 'member_count', 'is_me', 'sent_at', 'mime_type', 'file_name', 'next_cursor', 'has_more',
@@ -185,9 +196,11 @@ const API_NAMES = new Set([
   'webhook_not_found', 'webhook_limit_reached', 'invalid_webhook_url', 'not_a_voice_note', 'transcription_unavailable',
   'key_not_found', 'key_limit_reached', 'api_plan_required', 'transcription_limit_reached', 'plan_unavailable',
   'already_subscribed', 'terms_changed', 'email_send_failed', 'account_reconnect_required', 'api_paused',
-  'payload_too_large', 'upload_timeout', 'message_not_editable', 'message_not_deletable',
-  // Error and warning codes: the CLI's own, and a failed delivery's.
+  'payload_too_large', 'upload_timeout', 'message_not_editable', 'message_not_deletable', 'file_url_invalid',
+  'file_fetch_failed', 'link_not_found',
+  // Error and warning codes: the CLI's own, and a delivery's (a sent email's some_recipients_rejected included).
   ...CLI_ERROR_CODES, ...CLI_WARNING_CODES, 'network_rejected', 'not_logged_in', 'rate_limited_by_network',
+  'some_recipients_rejected',
   // Other clients' settings: OpenAI's Responses API and Codex.
   'server_label', 'server_url', 'allowed_tools', 'require_approval', 'bearer_token_env_var', 'mcp_servers',
 ]);
@@ -489,7 +502,9 @@ function curlRequests(code) {
     .filter((line) => /\bcurl\b/.test(line))
     .flatMap((line) => {
       const named = /(?:-X|--request) ([A-Z]+)/.exec(line)?.[1];
-      const method = named ?? (/ (-d|--data[\w-]*|-F|--form|--json) /.test(line) ? 'POST' : 'GET');
+      // curl -T (--upload-file) sends the file with PUT; -d, -F and --json POST.
+      const uploads = / (-T|--upload-file) /.test(line);
+      const method = named ?? (uploads ? 'PUT' : / (-d|--data[\w-]*|-F|--form|--json) /.test(line) ? 'POST' : 'GET');
       return [...line.matchAll(API_URL_PATH)].map((match) => [method, match[1], line]);
     });
 }
@@ -613,15 +628,24 @@ test('the_endpoint_check_finds_paths_methods_and_requests_the_api_lacks', () => 
   assert.deepEqual(endpointProblems('```bash\ncurl https://api.chesly.app/v1/webhooks/wh_1/test\n```'), [
     'curl sends GET /v1/webhooks/wh_1/test, which the API lacks',
   ]);
+  assert.deepEqual(endpointProblems("`GET /v1/downloads/{token}`\n```bash\ncurl -sS -T photo.jpg 'https://api.chesly.app/v1/uploads/<token>'\n```"), []);
+  assert.deepEqual(endpointProblems('```bash\ncurl -T photo.jpg https://api.chesly.app/v1/media\n```'), [
+    'curl sends PUT /v1/media, which the API lacks',
+  ]);
 });
 
 test('the_tool_name_and_event_checks_find_what_the_api_lacks', () => {
   assert.deepEqual(toolProblems('`send_message`, `catch_up`, `send_limit_reached` and `"allowed_tools": ["read_chat"]`'), []);
   assert.deepEqual(toolProblems('`edit_message`, `delete_message` and `message_not_editable`'), []);
+  assert.deepEqual(toolProblems('`get_media`, `create_upload`, its `upload_url` and `download_url`'), []);
   assert.deepEqual(toolProblems('`send_messages`, `edit_text`\n```json\n{"allowed_tools": ["list_contacts"]}\n```'), [
-    'send_messages is not one of the 12 tools',
-    'edit_text is not one of the 12 tools',
-    'list_contacts is not one of the 12 tools',
+    'send_messages is not one of the 14 tools',
+    'edit_text is not one of the 14 tools',
+    'list_contacts is not one of the 14 tools',
+  ]);
+  assert.deepEqual(toolProblems('`upload_file` and `get_file`'), [
+    'upload_file is not one of the 14 tools',
+    'get_file is not one of the 14 tools',
   ]);
   assert.deepEqual(nameProblems('`next_cursor`, `data.message.sender.is_me`, `--reply-to <msg_id>`, `CHESLY_API_KEY`'), []);
   assert.deepEqual(nameProblems('`message.delivery_failed` and `account.needs_attention` are event types'), []);
@@ -762,7 +786,7 @@ test('every_endpoint_named_is_the_apis', () => {
   assert.deepEqual(markdownFiles().flatMap((file) => endpointProblems(read(file)).map((problem) => `${file}: ${problem}`)), []);
 });
 
-test('every_tool_named_is_one_of_the_twelve', () => {
+test('every_tool_named_is_one_of_the_fourteen', () => {
   assert.deepEqual(markdownFiles().flatMap((file) => toolProblems(read(file)).map((problem) => `${file}: ${problem}`)), []);
 });
 
@@ -868,7 +892,8 @@ test('the_command_reference_covers_every_command_and_option', () => {
       const [name, sub] = words;
       const command = CLI[name] === undefined || CLI[name].subcommands?.[sub] === undefined ? name : `${name} ${sub}`;
       seen.add(command);
-      for (const word of words) if (word.startsWith('--')) seen.add(`${command} ${word.split('=')[0]}`);
+      // Long options and short ones (`-o`), never `-` (stdin) or `--` (the end of options).
+      for (const word of words) if (/^--?[a-z]/i.test(word)) seen.add(`${command} ${word.split('=')[0]}`);
     }
   }
   const expected = Object.entries(CLI).flatMap(([name, command]) =>
@@ -880,7 +905,7 @@ test('the_command_reference_covers_every_command_and_option', () => {
   assert.deepEqual(expected.filter((entry) => !seen.has(entry)), []);
 });
 
-test('the_command_reference_marks_what_wave_2_and_cli_0_3_add', () => {
+test('the_command_reference_marks_what_wave_2_and_cli_0_3_and_0_4_add', () => {
   const rows = read(join('skills', 'chesly', 'references', 'commands.md')).split('\n').filter((line) => line.startsWith('| `chesly'));
   assert.ok(rows.length > 0, 'the commands are in a table');
   for (const row of rows) {
@@ -890,7 +915,7 @@ test('the_command_reference_marks_what_wave_2_and_cli_0_3_add', () => {
       const options = optionsOf(words) ?? {};
       return [CLI[words[0]]?.wave, ...words.map((word) => options[word.split('=')[0]])];
     });
-    for (const [wave, mark] of [[2, '(Wave 2)'], [3, '(chesly 0.3.0 or later)']]) {
+    for (const [wave, mark] of [[2, '(Wave 2)'], [3, '(chesly 0.3.0 or later)'], [4, '(chesly 0.4.0 or later)']]) {
       assert.equal(row.includes(mark), waves.includes(wave), `${row}\nshould ${waves.includes(wave) ? '' : 'not '}be marked ${mark}`);
     }
   }
@@ -946,7 +971,7 @@ test('the_rest_reference_covers_every_endpoint_and_marks_wave_2', () => {
   const rest = apiReference('rest.md');
   const named = new Set([...rest.matchAll(METHOD_PATH)].map(([, method, path]) => endpointKey(method, path)));
   assert.deepEqual([...ENDPOINT_WAVES.keys()].filter((endpoint) => !named.has(endpoint)), []);
-  const rows = rest.split('\n').filter((line) => /^\| `(GET|POST|PATCH|DELETE) /.test(line));
+  const rows = rest.split('\n').filter((line) => /^\| `(GET|POST|PATCH|PUT|DELETE) /.test(line));
   assert.ok(rows.length > 0, 'the endpoints are in a table');
   const extended = new Set(WAVE_2_CONTENT.filter((name) => name.includes(' ')).map((name) => endpointKey(...name.split(' '))));
   for (const row of rows) {
@@ -967,8 +992,9 @@ test('the_rest_reference_gives_the_plans_limits_and_the_per_user_ones', () => {
 });
 
 test('wave_2_facts_in_prose_are_marked', () => {
-  // A line that states one of these Wave 2 facts outside the marked tables carries the mark too.
-  const facts = [/\b7 (?:of its 12 )?tools\b/, /OpenAPI 3\.1 document/];
+  // A line that states one of these Wave 2 facts outside the marked tables carries the mark too. The
+  // tool counts are files' (8 of 14 since get_media and create_upload), unmarked as edits are.
+  const facts = [/OpenAPI 3\.1 document/];
   for (const file of skillFiles('chesly-api')) {
     for (const line of read(file).split('\n')) {
       if (facts.some((fact) => fact.test(line))) assert.ok(line.includes('(Wave 2)'), `${file}: ${line}`);
@@ -990,7 +1016,7 @@ test('the_rest_reference_covers_the_planned_topics', () => {
   assert.match(rest, /opaque/i, 'IDs are opaque');
 });
 
-test('the_mcp_reference_covers_the_twelve_tools_and_marks_wave_2', () => {
+test('the_mcp_reference_covers_the_fourteen_tools_and_marks_wave_2', () => {
   const rows = apiReference('mcp.md').split('\n').filter((line) => /^\| `[a-z_]+` \|/.test(line));
   const tool = (row) => /^\| `([a-z_]+)`/.exec(row)[1];
   assert.deepEqual(rows.map(tool).sort(), Object.keys(TOOLS).sort());
@@ -1004,10 +1030,12 @@ test('the_mcp_reference_covers_the_twelve_tools_and_marks_wave_2', () => {
   // A tool count anywhere is a full key's (all of them) or a read-only key's.
   const counts = [Object.keys(TOOLS).length, Object.values(TOOLS).filter((entry) => entry.readKey).length];
   for (const file of copyFiles()) {
-    for (const [, count] of read(file).matchAll(/\b(\d+|ten|seven|twelve) tools\b/gi)) {
+    for (const [, count] of read(file).matchAll(/\b(\d+|seven|eight|ten|twelve|fourteen) tools\b/gi)) {
       assert.ok(counts.map(String).includes(count), `${file}: ${count} tools; a full key sees ${counts[0]}, a read-only key ${counts[1]}`);
     }
   }
+  // The MCP server takes files both ways now: get_media and create_upload.
+  assert.doesNotMatch(apiReference('mcp.md'), /no upload tool/i);
 });
 
 test('the_mcp_reference_sets_up_every_client', () => {
@@ -1198,7 +1226,7 @@ test('a_webhook_says_why_it_turned_off', () => {
 });
 
 test('a_slow_upload_waits_out_the_hold', () => {
-  const rest = section(apiReference('rest.md'), 'Files \\(Wave 2\\)');
+  const rest = section(apiReference('rest.md'), 'Upload \\(Wave 2\\)');
   const sending = section(read(join('skills', 'chesly', 'references', 'commands.md')), 'Sending');
   for (const [text, outcome] of [[rest, /`408` `upload_timeout`/], [sending, /exits 5 with `upload_timeout`/]]) {
     const line = text.split('\n').find((candidate) => candidate.includes('`upload_timeout`'));

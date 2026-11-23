@@ -14,7 +14,7 @@ Rows and sections marked (Wave 2) arrive with the API's second wave.
 - [Errors](#errors)
 - [Idempotency (Wave 2)](#idempotency-wave-2)
 - [Sending (Wave 2)](#sending-wave-2)
-- [Files (Wave 2)](#files-wave-2)
+- [Files](#files)
 - [Editing and deleting](#editing-and-deleting)
 - [Contacts and transcripts (Wave 2)](#contacts-and-transcripts-wave-2)
 - [Limits](#limits)
@@ -46,9 +46,10 @@ curl https://api.chesly.app/v1/me -H "Authorization: Bearer $CHESLY_API_KEY"
 | `GET /v1/messages/search` | Messages that match `q` (at most 200 characters), newest first: `chat_id`, `account_id`, `limit` (1 to 100, default 20). Each hit is a message plus `chat_name` and `network`. |
 | `GET /v1/messages` | Everything new across the chats since `since`, a page at a time: `limit` (1 to 200, default 100), `cursor`. It answers `messages`, `next_cursor` and `until`; the next walk starts at `since=<until>`. Email reaches it up to 10 seconds after it arrives. |
 | `GET /v1/catch_up` | The unread chats that aren't muted or archived, each with its newest messages, in one call: `chats` (1 to 50, default 20), `per_chat` (1 to 20, default 5). |
-| `GET /v1/media/{media_id}` | The bytes of a message's media (`media.id`). |
+| `GET /v1/media/{media_id}` | The bytes of a message's file (`media.id`) or of an email's attachment (its `id` in `email.attachments`). See [Files](#files). |
 | `POST /v1/chats/{chat_id}/messages` | Sends a message. See [Sending](#sending-wave-2). (Wave 2) |
-| `POST /v1/media` | Uploads a file to send. See [Files](#files-wave-2). (Wave 2) |
+| `POST /v1/media` | Uploads a file to send. See [Files](#files). (Wave 2) |
+| `GET /v1/downloads/{token}`, `PUT /v1/uploads/{token}` | The one-time links that the MCP tools `get_media` and `create_upload` hand out, used without a key. See [Files](#files). |
 | `PATCH /v1/messages/{message_id}`, `DELETE /v1/messages/{message_id}` | Edits the text of a message the user sent from Chesly, or deletes any message the user sent, for everyone in the chat. See [Editing and deleting](#editing-and-deleting). |
 | `GET /v1/contacts` | The people of the user's direct chats, by name. (Wave 2) |
 | `POST /v1/messages/{message_id}/transcript` | A voice note as text. (Wave 2) |
@@ -58,7 +59,7 @@ curl https://api.chesly.app/v1/me -H "Authorization: Bearer $CHESLY_API_KEY"
 | `GET /v1/keys`, `DELETE /v1/keys/{key_id}` | The user's API keys, and revoking one. (Wave 2) |
 | `GET /v1/openapi.json` | The OpenAPI document, without a key. (Wave 2) |
 
-A chat has `id`, `account_id`, `network`, `name`, `type` (`dm` or `group`), `unread_count`, `last_message_at`, `is_archived`, `is_pinned`, `is_muted`, `is_message_request` and `member_count`. A message has `id`, `chat_id`, `sender` (`name`, `is_me`), `text`, `truncated`, `type` (`text`, `image`, `video`, `audio`, `file` or `other`), `media` (`id`, `mime_type`, `file_name`), `sent_at`, `edited`, `deleted`, `reply_to` and `delivery`. Text is cut at 4,000 UTF-16 code units, and `truncated` says so.
+A chat has `id`, `account_id`, `network`, `name`, `type` (`dm` or `group`), `unread_count`, `last_message_at`, `is_archived`, `is_pinned`, `is_muted`, `is_message_request` and `member_count`. A message has `id`, `chat_id`, `sender` (`name`, `is_me`), `text`, `truncated`, `type` (`text`, `image`, `video`, `audio`, `file` or `other`), `media` (`id`, `mime_type`, `file_name`), `sent_at`, `edited`, `deleted`, `reply_to` and `delivery`. Text is cut at 4,000 UTF-16 code units, and `truncated` says so. An email message also has `email`: `subject`, `from`, `to`, `cc` and `attachments`, each with `id`, `file_name`, `mime_type` and `size`; its `type` is `text` and its `media` is `null`.
 
 ## Pages
 
@@ -70,7 +71,7 @@ A chat has `id`, `account_id`, `network`, `name`, `type` (`dm` or `group`), `unr
 ## Filters, networks and email (Wave 2)
 
 - `network` keeps `GET /v1/chats`, `GET /v1/catch_up`, `GET /v1/messages?since=` and `GET /v1/messages/search` to one network. The names: `whatsapp`, `imessage`, `instagram`, `messenger`, `telegram`, `signal`, `line`, `discord`, `slack`, `linkedin`, `twitter` (X), `reddit`, `gmessages` (Google Messages), `googlechat` (Google Chat), `grokbot` (Grok Bot), `chatgptdots` (OpenAI Dots), `muse` and `email`. `tiktok` and `wechat` are coming soon: only accounts that can connect them have chats there.
-- Email is opt-in: those lists leave it out unless `network=email`, or `account_id` names an email account. An email chat or message is always reachable by its ID. An email read answers `409` `account_reconnect_required` when its account needs the user to reconnect it in the Chesly app. Don't retry. An email thread's `name` is its subject, and an email message also has `email` (`subject`, `from`, `to`, `cc`).
+- Email is opt-in: those lists leave it out unless `network=email`, or `account_id` names an email account. An email chat or message is always reachable by its ID. An email read answers `409` `account_reconnect_required` when its account needs the user to reconnect it in the Chesly app. Don't retry. An email thread's `name` is its subject, and an email message also has `email` (`subject`, `from`, `to`, `cc`, `attachments`).
 - `updated_since` on `GET /v1/chats` keeps the chats whose `last_message_at` is at or after it.
 - `before` and `after` on `GET /v1/chats/{chat_id}/messages` keep the messages sent before or after those times, still newest first.
 - Times are ISO 8601 with an offset, such as `2026-10-27T09:30:00Z`.
@@ -99,7 +100,7 @@ Every error is `application/problem+json` (RFC 9457):
 - `title` is fixed per code; `detail` explains this occurrence. `request_id` is what support looks up.
 - A `400` from bad parameters lists each problem in `errors`, with its `detail` and `pointer`.
 - A `429` or `503` carries `Retry-After` and `retry_after`, in seconds. A `503` `upstream_unavailable` is temporary: retry it.
-- Codes to expect: `invalid_api_key` (401), `insufficient_scope` (403), `chat_not_found` and `message_not_found` (404), `message_not_editable` and `message_not_deletable` (409), `rate_limited` and `send_limit_reached` (429), `api_plan_required` and `transcription_limit_reached` (402), `upstream_unavailable` and `plan_unavailable` (503).
+- Codes to expect: `invalid_api_key` (401), `insufficient_scope` (403), `chat_not_found`, `message_not_found` and `media_not_found` (404), `message_not_editable` and `message_not_deletable` (409), `file_url_invalid` (400) and `file_fetch_failed` (422) for a file sent by URL, `rate_limited` and `send_limit_reached` (429), `api_plan_required` and `transcription_limit_reached` (402), `upstream_unavailable` and `plan_unavailable` (503).
 
 ## Idempotency (Wave 2)
 
@@ -112,7 +113,7 @@ Every error is `application/problem+json` (RFC 9457):
 
 ## Sending (Wave 2)
 
-`POST /v1/chats/{chat_id}/messages` takes JSON with `text`, `reply_to` (a message ID in the same chat) and `media_id` (from `POST /v1/media`): at least one of `text` and `media_id`.
+`POST /v1/chats/{chat_id}/messages` takes JSON with `text`, `reply_to` (a message ID in the same chat) and one file, as `media_id` or `file_url` ([Files](#files)): text, a file, or both.
 
 ```bash
 curl https://api.chesly.app/v1/chats/chat_x1R7KTsNtH88aWCJvUyo/messages \
@@ -150,9 +151,37 @@ The answer, `201`, is the message, its delivery `queued`:
 - `GET /v1/messages/{message_id}` shows where a message is, and a failure is also a `message.delivery_failed` event. Messages sent through the API in the last 30 days carry `delivery`; every other message has `delivery: null`.
 - Text limits, in UTF-16 code units: Instagram 1,000; Discord 2,000; Telegram 4,096; LINE 5,000; email 100,000; every other network 10,000. Longer is `400` `text_too_long`, and a NUL character is `400` `invalid_request`.
 - Refused: a message request (`409` `message_request`), a chat Chesly can't send to (`400` `unsupported_chat`), a `reply_to` from another chat (`400` `invalid_reply_to`), a send over the limit (`429` `send_limit_reached`), and any send while Chesly pauses a network (`503` `network_unavailable`).
-- Email takes text only; a file is `400` `invalid_request`. The reply goes to everyone on the message it answers (`reply_to`, or else the newest message from someone else), with "Re:" and the thread's subject. A disconnected email account is `409` `account_reconnect_required`, and an email provider that refuses the message is `502` `email_send_failed`.
+- A send to an email chat is a reply: it goes to everyone on the message it answers (`reply_to`, or else the newest message from someone else), with "Re:" and the thread's subject. It takes text and one file, as its attachment, of at most 25 MB (25,000,000 bytes), as email providers refuse bigger ones: over that is `400` `media_too_large`, and a kind of file the Chesly apps never email, such as a program or a script, is `400` `invalid_request`. A disconnected email account is `409` `account_reconnect_required`, an account that can't send mail, such as a Microsoft 365 account whose organization turned sending off, is `400` `unsupported_chat`, and an email provider that refuses the message is `502` `email_send_failed`.
+- An email the mail server took for only some of its recipients is `sent`, with `delivery.error` `some_recipients_rejected` (`certain: true`): it reached everyone else. Who was refused isn't told.
 
-## Files (Wave 2)
+## Files
+
+A message carries at most one file: `type` says what it is (`image`, `video`, `audio` or `file`), and `media` has its `id`, `mime_type` and `file_name`. An email lists its files in `email.attachments` instead, each with an `id` (`media_…`), `file_name`, `mime_type` and `size` in bytes as the email declares it (0 when it doesn't say); images its body shows are left out.
+
+### Download
+
+`GET /v1/media/{media_id}` answers the file's bytes, for a message's `media.id` or an attachment's `id`. An unknown ID is `404` `media_not_found`, and a file no longer stored is `410` `media_expired`.
+
+### Send
+
+A send carries one file, given one of two ways (both at once is `400` `invalid_request`):
+
+- `media_id`: a file uploaded with `POST /v1/media` (below), or any message's `media.id` or an email attachment's `id`, which forwards that file with no download or upload. An unknown one is `404` `media_not_found`.
+- `file_url`: a public `https://` URL, which Chesly fetches and sends, following up to 3 redirects, at most 50 MB (50,000,000 bytes) within 60 s. `file_name` names the file; without it, Chesly uses the name its server gives, else the URL's last path segment. A URL that isn't `https://`, carries a user name or password, or points to a private address is `400` `file_url_invalid`: Chesly never fetches from a private network. A fetch that fails, such as an answer other than `200`, an empty file or a server too slow, is `422` `file_fetch_failed`, whose `detail` names the status but never the URL. With an `Idempotency-Key`, the URL is fetched once however often the send is retried.
+
+```bash
+curl https://api.chesly.app/v1/chats/chat_x1R7KTsNtH88aWCJvUyo/messages \
+  -H "Authorization: Bearer $CHESLY_API_KEY" \
+  -H "Idempotency-Key: 3f1b7c52-6a0e-4d49-9a57-1d2c8e4b7f10" \
+  -H "Content-Type: application/json" \
+  --data-binary @- <<'EOF'
+{"text": "The menu for tonight", "file_url": "https://example.com/menu.pdf", "file_name": "menu.pdf"}
+EOF
+```
+
+Any `text` is the file's caption, or an email's body. One file a message, of at most 50 MB (50,000,000 bytes), or 25 MB to email; a bigger one is `400` `media_too_large`.
+
+### Upload (Wave 2)
 
 ```bash
 curl https://api.chesly.app/v1/media \
@@ -160,9 +189,18 @@ curl https://api.chesly.app/v1/media \
   -F "file=@report.pdf"
 ```
 
-The answer, `201`, is `{ "id": "media_…", "mime_type": "application/pdf", "size": 48213, "file_name": "report.pdf" }`. Send it as `media_id`, with any `text` as its caption. One file a message, of at most 50 MB (50,000,000 bytes); a bigger one is `400` `media_too_large`.
+The answer, `201`, is `{ "id": "media_…", "mime_type": "application/pdf", "size": 48213, "file_name": "report.pdf" }`. Send it as `media_id` within 24 hours.
 
 A too-slow upload (under 50 KB/s after 10 s, or not finished within 60 s) answers `408` `upload_timeout`, and the account's uploads are then held for 60 s (`429` `rate_limited`): wait about 60 s and send again, or send a smaller file on a slow connection.
+
+### One-time links
+
+The MCP tools `get_media` and `create_upload` hand an agent links it uses without a key: the link itself is the credential.
+
+- `GET /v1/downloads/{token}`, from `get_media`'s `download_url`: the file, as an attachment, any number of times for 15 minutes.
+- `PUT /v1/uploads/{token}`, from `create_upload`'s `upload_url`: the request body is the file (`curl -sS -T <path> '<upload_url>'`), at most 50 MB (50,000,000 bytes), once within 15 minutes. It answers `201` with the upload's JSON, whose `id` goes in `media_id` within 24 hours.
+- A link that is unknown, used or expired is `404` `link_not_found`: ask for a new one. Each address may use 300 download links and 60 upload links a minute (`429` `rate_limited`).
+- A link keeps working until it expires even if the key that made it is revoked: 15 minutes at most. Keep links out of chats and logs, as you would a key.
 
 ## Editing and deleting
 
@@ -227,7 +265,7 @@ curl -X DELETE https://api.chesly.app/v1/messages/<msg_id> \
 | Searches, catch-ups | 30 a minute each, per user |
 | Sends on WhatsApp | 60 an hour and 250 a day, per account |
 | Sends on every other network, email included | 30 an hour and 150 a day, per account |
-| Files | One per message, up to 50 MB (50,000,000 bytes) |
+| Files | One per message, up to 50 MB (50,000,000 bytes), or 25 MB (25,000,000 bytes) to email |
 | Live streams | The plan's: `limits.event_streams` |
 | Webhooks | The plan's: `limits.webhooks` |
 | Active keys | Up to 100 on every plan (`limits.api_keys`) |

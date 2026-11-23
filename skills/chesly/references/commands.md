@@ -2,7 +2,7 @@
 
 `chesly --help` and `chesly <command> --help` describe every command. Every command also takes `--json`, which prints the API's JSON as it is (the default when the output is piped), and `--help`. Nothing ever prompts.
 
-Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2. Rows marked (chesly 0.3.0 or later) need that version: `chesly --version` shows the one installed, and `npm install -g chesly` updates it.
+Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2. Rows marked (chesly 0.3.0 or later) or (chesly 0.4.0 or later) need that version: `chesly --version` shows the one installed, and `npm install -g chesly` updates it.
 
 ## Contents
 
@@ -10,6 +10,7 @@ Rows marked (Wave 2) arrive with the Chesly API's second wave, in CLI 0.2. Rows 
 - [Reading](#reading)
 - [Chat names](#chat-names)
 - [Sending](#sending)
+- [Files](#files)
 - [Editing and deleting](#editing-and-deleting)
 - [Watching](#watching)
 - [Webhooks](#webhooks)
@@ -53,7 +54,7 @@ A read-only key (scope `read`) can read, search and watch, but not send, edit or
 
 A chat has `id`, `account_id`, `network`, `name`, `type` (`dm` or `group`), `unread_count`, `last_message_at`, `is_archived`, `is_pinned`, `is_muted`, `is_message_request` and `member_count`.
 
-A message has `id` (`msg_…`), `chat_id`, `sender` (`name`, `is_me`), `text`, `truncated`, `type` (`text`, `image`, `video`, `audio`, `file` or `other`), `media`, `sent_at`, `edited`, `deleted`, `reply_to` and `delivery`. Text is cut at 4,000 characters, and `truncated` says so. An email message also has `email` (`subject`, `from`, `to`, `cc`).
+A message has `id` (`msg_…`), `chat_id`, `sender` (`name`, `is_me`), `text`, `truncated`, `type` (`text`, `image`, `video`, `audio`, `file` or `other`), `media` (`id`, `mime_type`, `file_name`), `sent_at`, `edited`, `deleted`, `reply_to` and `delivery`. Text is cut at 4,000 characters, and `truncated` says so. An email message also has `email` (`subject`, `from`, `to`, `cc`, and `attachments`, each with `id`, `file_name`, `mime_type` and `size`).
 
 An email read can answer `account_reconnect_required`: the user reconnects that account in the Chesly app. Don't retry.
 
@@ -87,15 +88,29 @@ Names are looked up among chat networks only. To find an email thread by its sub
 
 - A file alone needs no text: `chesly send <chat_id> --file <path> --wait --json`.
 - `--reply-to <msg_id>` quotes one message of that chat: an `id` from `read`, `catchup` or `search`.
-- `--file <path>` attaches one file of at most 50 MB (50,000,000 bytes), and the text becomes its caption. A file that can't be read fails with `file_unreadable` before anything is sent. Email takes text only.
+- `--file <path>` attaches one file of at most 50 MB (50,000,000 bytes), and the text becomes its caption. A file that can't be read fails with `file_unreadable` before anything is sent. In an email thread the file goes as the reply's attachment, with the text as its body, at most 25 MB (25,000,000 bytes): email providers refuse bigger ones, so the send fails with `media_too_large` (exit 1).
 - A too-slow upload (under 50 KB/s after 10 s, or not finished within 60 s) exits 5 with `upload_timeout`, and the account's uploads are then held for 60 s (`rate_limited`): wait about 60 s and send again, or send a smaller file on a slow connection.
-- `--media-id <media_id>` attaches a file uploaded before, instead of `--file`: it is how a file send that gave up is retried.
+- `--media-id <media_id>` attaches a file uploaded before, instead of `--file`: it is how a file send that gave up is retried. It also forwards a file someone sent, with no download or upload: give the media ID that `read` shows (a message's `media.id`, or an email attachment's `id`).
 - The answer is the sent message, its `delivery.status` `queued`. `--wait` asks once a second, within 30 seconds in all, until it is `sent` (success: most networks stop there), `delivered` (only where the network reports it) or `failed`; each ask counts as a call. A failure the network confirmed exits 1 with `delivery_failed`, the reason in `delivery.error.message`. One it didn't confirm (`delivery.error.certain` false) reads `unconfirmed`: `--wait` keeps asking, and if it stays so, the send exits 5 with `delivery_unconfirmed`. It may have been delivered, so don't resend until a later `message.delivery_failed` with `certain: true` says it wasn't. Once the message went out, it is always printed and the exit is 0, even when following it fails: that is a `delivery_wait_failed` warning, with the `idempotency_key` that asks the API for its answer again.
 - Every send carries an `Idempotency-Key`, and the CLI's own retries (after a network error, a 502, 503 or 504, or while a first attempt still runs: 3 tries) reuse it, so one command sends at most once. When it gives up without knowing whether the message went out, the error carries the key as `idempotency_key`: run the same command again, with the same text and `--idempotency-key <that key>`, and the API answers with the first attempt's result instead of sending again. A file send's error also carries its upload as `media_id`: retry with `--media-id <media_id> --idempotency-key <key>`, without `--file`, since a new upload would be another media ID, which the same key refuses (`422` `idempotency_key_reused`).
 - Each connected account may send 60 messages an hour and 250 a day on WhatsApp, and 30 an hour and 150 a day on every other network, email included. Over a limit, the send exits 5 with `send_limit_reached` and `retry_after`.
 - Text limits, in UTF-16 code units: Instagram 1,000; Discord 2,000; Telegram 4,096; LINE 5,000; email 100,000; every other network 10,000. Longer text is refused with `text_too_long`.
 - Also refused: a message request (`message_request`), a chat Chesly can't send to (`unsupported_chat`), a `--reply-to` from another chat (`invalid_reply_to`), and any send with a read-only key (`insufficient_scope`).
 - An email reply goes to everyone on the message it answers (by default the newest one from someone else), with "Re:" and the thread's subject.
+
+## Files
+
+| Command | What it does |
+|---|---|
+| `chesly download <media_id> [-o <path>] [--force]` | Saves a file from a message, or an email's attachment, under its own name in this directory, or where `-o` says: a file name, or a directory to save it in. (chesly 0.4.0 or later) |
+| `chesly download <media_id> -o -` | Writes the file's bytes to standard output, and nothing else, for a pipe or a file: never to a terminal. (chesly 0.4.0 or later) |
+
+- In JSON, a file's media ID is a message's `media.id`, or the `id` of each of an email's `email.attachments`. In a terminal, `read` and `catchup` show each file under the message that carries it, on a line of its own with its media ID, such as `[image] beach.jpg · media_…`, and an email's attachments the same way, with their size (chesly 0.4.0 or later).
+- `chesly download <media_id> --json` prints `{"path":"/home/me/beach.jpg","size":48213,"mime_type":"image/jpeg"}`: the whole path, the size in bytes and the type. `chesly download <media_id> --output ~/Downloads --json` saves it in that directory, under its own name.
+- Its own name is the one it was sent with, made safe to save: never a path, a hidden file or a name starting with `-`. A file without a name is saved as its media ID with its type's extension.
+- It never replaces a file without `--force`: it exits 2 with `file_exists` (and the file's `path`) and saves nothing. A place it can't save to fails with `file_unwritable`. The file is written under a temporary name and takes its name once whole, so a download that fails or is stopped (`interrupted`) leaves nothing behind.
+- A file is at most 50 MB (50,000,000 bytes). An unknown media ID exits 4 with `media_not_found`, and a file no longer kept exits 1 with `media_expired`. A file briefly unavailable (`media_unavailable`), a 502, 503, 504 or 429, or a dropped connection is asked for again, twice at most, then exits 5 (1 for a connection).
+- To send a file someone sent on to another chat, use `chesly send <chat> --media-id <media_id>`, which needs no download.
 
 ## Editing and deleting
 
@@ -161,9 +176,9 @@ New keys come from `chesly login`, or from https://web.chesly.app/api/keys. `key
 |---|---|
 | 0 | ok |
 | 1 | error |
-| 2 | usage |
+| 2 | usage: a wrong argument, or a file `download` would replace (`file_exists`) |
 | 3 | not signed in (no key, a malformed one, or the key was rejected) |
-| 4 | not found (an unknown chat, message, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |
+| 4 | not found (an unknown chat, message, file, webhook or key, or a name that matches no chat), or ambiguous (a name that matches several) |
 | 5 | not final, come back to it: rate limited (a 429: too many requests, a send cap, uploads held after a slow one, or too many open event streams), a request that took too long to arrive (a 408, such as an upload's `upload_timeout`), briefly unavailable (a 502, 503 or 504, from the API or a gateway), a first attempt still running (a 409 `idempotency_in_progress`), or a send the network didn't confirm (`delivery_unconfirmed`: check the chat before you send it again). `retry_after` says when, if the answer has it |
 | 6 | payment required: the account needs an API plan, or this period's transcription minutes are used up (Starter has none) |
 
@@ -179,7 +194,7 @@ In JSON mode, an error is one line on standard error, as problem details:
 
 - Branch on `code`. https://agents.chesly.app/docs/errors lists every code.
 - The CLI's own errors carry `type`, `title` and `code`, plus fields of their own: `candidates` for an ambiguous chat name; `idempotency_key`, and `media_id` for a file send, for a send that may or may not have gone out; `message_id` and `delivery` for `delivery_failed` and `delivery_unconfirmed`.
-- The CLI's own codes: `access_denied`, `ambiguous_chat`, `chat_not_found`, `credentials_file_error`, `delivery_failed`, `delivery_unconfirmed`, `expired_token`, `file_unreadable`, `internal_error`, `invalid_api_url`, `invalid_key_format`, `invalid_response`, `keychain_error`, `keychain_timeout`, `login_not_started`, `media_too_large`, `network_error`, `not_signed_in` and `usage_error`.
+- The CLI's own codes: `access_denied`, `ambiguous_chat`, `chat_not_found`, `credentials_file_error`, `delivery_failed`, `delivery_unconfirmed`, `expired_token`, `file_exists`, `file_unreadable`, `file_unwritable`, `internal_error`, `interrupted`, `invalid_api_url`, `invalid_key_format`, `invalid_response`, `keychain_error`, `keychain_timeout`, `login_not_started`, `media_too_large`, `network_error`, `not_signed_in` and `usage_error`.
 - An answer that isn't problem details, such as a gateway's 502 during a Chesly deploy, gets a code built from its status: `http_400`, `http_404`, `http_413`, `http_429`, `http_500`, `http_502`, `http_503` or `http_504`, and `http_error` for any other. A 502, 503 or 504 exits 5: run the command again after a few seconds.
 - Warnings never change the exit code. In JSON mode each is one line on standard error, `{"warning":"<code>","message":"…"}`: `delivery_wait_failed` (the message went out, but following its delivery failed), `env_key_set` (`CHESLY_API_KEY` wins over the stored key), `event_too_large` (an event too large to read was skipped), `events_expired` (the resume point is gone, so `watch` starts from now), `invalid_event` (an event the CLI couldn't read was skipped), `key_details_unavailable` (a new key's details didn't load), `key_still_active` (a key this CLI no longer uses wasn't revoked) and `reconnecting` (`watch` is reconnecting).
 
