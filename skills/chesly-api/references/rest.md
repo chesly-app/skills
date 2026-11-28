@@ -278,7 +278,7 @@ Three flat plans, with the same API: reads, sends, events, webhooks, the CLI and
 
 | | Starter | Personal | Pro |
 |---|---|---|---|
-| Price | $20 a month | $49 a month | $199 a month |
+| Price | $20 a month | $49 a month | $99 a month |
 | Transcription a period | none | 600 minutes | 3,000 minutes |
 | Webhooks | 5 | 25 | 100 |
 | Requests, per key and for all of a user's keys together | 5 a second, 300 a minute | 15 a second, 900 a minute | 30 a second, 1,800 a minute |
